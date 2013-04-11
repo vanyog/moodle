@@ -58,7 +58,7 @@ class filter_multilang extends moodle_text_filter {
             return $text;
         }
 
-        $search = '/<([a-z0-9]+)[^>]*?lang=".*?".*?>.*?<\/\1>\s*(?:<[a-z]+[^>]*?lang=".*?".*?>.*?<\/\1>\s*)+/is';
+        $search = '/<([a-z0-9]+)[^>]*?lang=".*?".*?>.*?<\/\1>\s*(?:<\1[^>]*?lang=".*?".*?>.*?<\/\1>\s*)+/is';
 
         $result = preg_replace_callback($search, 'filter_multilang_impl', $text);
 
