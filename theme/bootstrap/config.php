@@ -152,11 +152,9 @@ $THEME->layouts = array(
 );
 
 $THEME->javascripts = array(
-    'bootstrapengine',
+);
+$THEME->javascripts_footer = array(
     'moodlebootstrap',
-    'bootstrapcollapse',
-    'bootstrapdropdown',
-    'headercollapse',
 );
 
 $useragent = '';
@@ -167,3 +165,4 @@ if (strpos($useragent, 'MSIE 8') || strpos($useragent, 'MSIE 7')) {
     $THEME->javascripts[] = 'html5shiv';
 }
 
+$THEME->hidefromselector = true;

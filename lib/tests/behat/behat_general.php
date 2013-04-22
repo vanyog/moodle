@@ -64,6 +64,25 @@ class behat_general extends behat_base {
     }
 
     /**
+     * Switches to the specified window. Useful when interacting with popup windows.
+     *
+     * @Given /^I switch to "(?P<window_name_string>(?:[^"]|\\")*)" window$/
+     * @param string $windowname
+     */
+    public function switch_to_window($windowname) {
+        $this->getSession()->switchToWindow($windowname);
+    }
+
+    /**
+     * Switches to the main Moodle window. Useful when you finish interacting with popup windows.
+     *
+     * @Given /^I switch to the main window$/
+     */
+    public function switch_to_the_main_window() {
+        $this->getSession()->switchToWindow();
+    }
+
+    /**
      * Clicks link with specified id|title|alt|text.
      *
      * @When /^I follow "(?P<link_string>(?:[^"]|\\")*)"$/
@@ -136,6 +155,28 @@ class behat_general extends behat_base {
 
         $node = $this->get_node_in_container($selectortype, $element, $nodeselectortype, $nodeelement);
         $node->click();
+    }
+
+    /**
+     * Click on the specified element inside a table row containing the specified text.
+     *
+     * @Given /^I click on "(?P<element_string>(?:[^"]|\\")*)" "(?P<selector_string>(?:[^"]|\\")*)" in the "(?P<row_text_string>(?:[^"]|\\")*)" table row$/
+     * @throws ElementNotFoundException
+     * @param string $element Element we look for
+     * @param string $selectortype The type of what we look for
+     * @param string $tablerowtext The table row text
+     */
+    public function i_click_on_in_the_table_row($element, $selectortype, $tablerowtext) {
+
+        // The table row container.
+        $nocontainerexception = new ElementNotFoundException($this->getSession(), '"' . $tablerowtext . '" row text ');
+        $tablerowtext = str_replace("'", "\'", $tablerowtext);
+        $rownode = $this->find('xpath', "//tr[contains(., '" . $tablerowtext . "')]", $nocontainerexception);
+
+        // Looking for the element DOM node inside the specified row.
+        list($selector, $locator) = $this->transform_selector($selectortype, $element);
+        $elementnode = $this->find($selector, $locator, false, $rownode);
+        $elementnode->click();
     }
 
     /**

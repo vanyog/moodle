@@ -363,10 +363,15 @@ BRANCH.prototype = {
         }
 
         if (!link) {
+            var branchspan = Y.Node.create('<span></span>');
             if (branchicon) {
-                branchp.appendChild(branchicon);
+                branchspan.appendChild(branchicon);
             }
-            branchp.append(this.get('name'));
+            branchspan.append(this.get('name'));
+            if (this.get('hidden')) {
+                branchspan.addClass('dimmed_text');
+            }
+            branchp.appendChild(branchspan);
         } else {
             var branchlink = Y.Node.create('<a title="'+this.get('title')+'" href="'+link+'"></a>');
             if (branchicon) {
@@ -529,7 +534,7 @@ BRANCH.prototype = {
                 url = M.cfg.wwwroot + '/course/index.php';
             }
         } else {
-            url = M.cfg.wwwroot+'/course/category.php?id=' + branch.get('key');
+            url = M.cfg.wwwroot+'/course/index.php?categoryid=' + branch.get('key');
         }
         branch.addChild({
             name : M.str.moodle.viewallcourses,

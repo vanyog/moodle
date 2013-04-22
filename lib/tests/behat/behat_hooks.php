@@ -29,9 +29,10 @@
 
 require_once(__DIR__ . '/../../behat/behat_base.php');
 
-use Behat\Behat\Event\SuiteEvent as SuiteEvent;
-use Behat\Behat\Event\ScenarioEvent as ScenarioEvent;
-use Behat\Behat\Event\StepEvent as StepEvent;
+use Behat\Behat\Event\SuiteEvent as SuiteEvent,
+    Behat\Behat\Event\ScenarioEvent as ScenarioEvent,
+    Behat\Behat\Event\StepEvent as StepEvent,
+    WebDriver\Exception\NoSuchWindow as NoSuchWindow;
 
 /**
  * Hooks to the behat process.
@@ -116,6 +117,9 @@ class behat_hooks extends behat_base {
             throw new coding_exception('Behat only can modify the test database and the test dataroot!');
         }
 
+        // Avoid some notices / warnings.
+        $SESSION = new stdClass();
+
         behat_util::reset_database();
         behat_util::reset_dataroot();
 
@@ -128,9 +132,6 @@ class behat_hooks extends behat_base {
         // Assing valid data to admin user (some generator-related code needs a valid user).
         $user = $DB->get_record('user', array('username' => 'admin'));
         session_set_user($user);
-
-        // Avoid some notices / warnings.
-        $SESSION = new stdClass();
     }
 
     /**
@@ -170,7 +171,11 @@ class behat_hooks extends behat_base {
         }
 
         // Wait until the page is ready.
-        $this->getSession()->wait(self::TIMEOUT, '(document.readyState === "complete")');
+        try {
+            $this->getSession()->wait(self::TIMEOUT, '(document.readyState === "complete")');
+        } catch (NoSuchWindow $e) {
+            // If we were interacting with a popup window it will not exists after closing it.
+        }
     }
 
 }

@@ -1460,7 +1460,7 @@ function xmldb_main_upgrade($oldversion) {
 
     if ($oldversion < 2012111200.01) {
         // Force the rebuild of the cache of every courses, some cached information could contain wrong icon references.
-        rebuild_course_cache();
+        $DB->execute('UPDATE {course} set modinfo = ?, sectioncache = ?', array(null, null));
 
         // Main savepoint reached.
         upgrade_main_savepoint(true, 2012111200.01);
@@ -1665,7 +1665,7 @@ function xmldb_main_upgrade($oldversion) {
         $DB->delete_records('course_sections_avail_fields', array('userfield' => 'interests'));
         $DB->delete_records('course_modules_avail_fields', array('userfield' => 'interests'));
         // Clear course cache (will be rebuilt on first visit) in case of changes to these.
-        rebuild_course_cache(0, true);
+        $DB->execute('UPDATE {course} set modinfo = ?, sectioncache = ?', array(null, null));
 
         upgrade_main_savepoint(true, 2013022600.00);
     }
@@ -1988,6 +1988,133 @@ function xmldb_main_upgrade($oldversion) {
 
         // Main savepoint reached.
         upgrade_main_savepoint(true, 2013040300.01);
+    }
+
+    if ($oldversion < 2013041200.00) {
+        // MDL-29877 Some bad restores created grade items with no category information.
+        $sql = "UPDATE {grade_items}
+                   SET categoryid = courseid
+                 WHERE itemtype <> 'course' and itemtype <> 'category'
+                       AND categoryid IS NULL";
+        $DB->execute($sql);
+        upgrade_main_savepoint(true, 2013041200.00);
+    }
+
+    if ($oldversion < 2013041600.00) {
+        // Copy constants from /course/lib.php instead of including the whole library:
+        $c = array( 'FRONTPAGENEWS'                 => 0,
+                    'FRONTPAGECOURSELIST'           => 1,
+                    'FRONTPAGECATEGORYNAMES'        => 2,
+                    'FRONTPAGETOPICONLY'            => 3,
+                    'FRONTPAGECATEGORYCOMBO'        => 4,
+                    'FRONTPAGEENROLLEDCOURSELIST'   => 5,
+                    'FRONTPAGEALLCOURSELIST'        => 6,
+                    'FRONTPAGECOURSESEARCH'         => 7);
+        // Update frontpage settings $CFG->frontpage and $CFG->frontpageloggedin. In 2.4 there was too much of hidden logic about them.
+        // This script tries to make sure that with the new (more user-friendly) frontpage settings the frontpage looks as similar as possible to what it was before upgrade.
+        $ncourses = $DB->count_records('course');
+        foreach (array('frontpage', 'frontpageloggedin') as $configkey) {
+            if ($frontpage = explode(',', $CFG->{$configkey})) {
+                $newfrontpage = array();
+                foreach ($frontpage as $v) {
+                    switch ($v) {
+                        case $c['FRONTPAGENEWS']:
+                            // Not related to course listings, leave as it is.
+                            $newfrontpage[] = $c['FRONTPAGENEWS'];
+                            break;
+                        case $c['FRONTPAGECOURSELIST']:
+                            if ($configkey === 'frontpageloggedin' && empty($CFG->disablemycourses)) {
+                                // In 2.4 unless prohibited in config, the "list of courses" was considered "list of enrolled courses" plus course search box.
+                                $newfrontpage[] = $c['FRONTPAGEENROLLEDCOURSELIST'];
+                            } else if ($ncourses <= 200) {
+                                // Still list of courses was only displayed in there were less than 200 courses in system. Otherwise - search box only.
+                                $newfrontpage[] = $c['FRONTPAGEALLCOURSELIST'];
+                                break; // skip adding search box
+                            }
+                            if (!in_array($c['FRONTPAGECOURSESEARCH'], $newfrontpage)) {
+                                $newfrontpage[] = $c['FRONTPAGECOURSESEARCH'];
+                            }
+                            break;
+                        case $c['FRONTPAGECATEGORYNAMES']:
+                            // In 2.4 search box was displayed automatically after categories list. In 2.5 it is displayed as a separate setting.
+                            $newfrontpage[] = $c['FRONTPAGECATEGORYNAMES'];
+                            if (!in_array($c['FRONTPAGECOURSESEARCH'], $newfrontpage)) {
+                                $newfrontpage[] = $c['FRONTPAGECOURSESEARCH'];
+                            }
+                            break;
+                        case $c['FRONTPAGECATEGORYCOMBO']:
+                            $maxcourses = empty($CFG->numcoursesincombo) ? 500 : $CFG->numcoursesincombo;
+                            // In 2.4 combo list was not displayed if there are more than $CFG->numcoursesincombo courses in the system.
+                            if ($ncourses < $maxcourses) {
+                                $newfrontpage[] = $c['FRONTPAGECATEGORYCOMBO'];
+                            }
+                            if (!in_array($c['FRONTPAGECOURSESEARCH'], $newfrontpage)) {
+                                $newfrontpage[] = $c['FRONTPAGECOURSESEARCH'];
+                            }
+                            break;
+                    }
+                }
+                set_config($configkey, join(',', $newfrontpage));
+            }
+        }
+        // $CFG->numcoursesincombo no longer affects whether the combo list is displayed. Setting is deprecated.
+        unset_config('numcoursesincombo');
+
+        upgrade_main_savepoint(true, 2013041600.00);
+    }
+
+    if ($oldversion < 2013041601.00) {
+        // Create a new 'badge_external' table first.
+        // Define table 'badge_external' to be created.
+        $table = new xmldb_table('badge_external');
+
+        // Adding fields to table 'badge_external'.
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null, null);
+        $table->add_field('backpackid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null, 'id');
+        $table->add_field('collectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null, 'backpackid');
+
+        // Adding keys to table 'badge_external'.
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_key('fk_backpackid', XMLDB_KEY_FOREIGN, array('backpackid'), 'badge_backpack', array('id'));
+
+        // Conditionally launch create table for 'badge_external'.
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Perform user data migration.
+        $usercollections = $DB->get_records('badge_backpack');
+        foreach ($usercollections as $usercollection) {
+            $collection = new stdClass();
+            $collection->backpackid = $usercollection->id;
+            $collection->collectionid = $usercollection->backpackgid;
+            $DB->insert_record('badge_external', $collection);
+        }
+
+        // Finally, drop the column.
+        // Define field backpackgid to be dropped from 'badge_backpack'.
+        $table = new xmldb_table('badge_backpack');
+        $field = new xmldb_field('backpackgid');
+
+        // Conditionally launch drop field backpackgid.
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->drop_field($table, $field);
+        }
+
+        // Main savepoint reached.
+        upgrade_main_savepoint(true, 2013041601.00);
+    }
+
+    if ($oldversion < 2013041601.01) {
+        // Changing the default of field descriptionformat on table user to 1.
+        $table = new xmldb_table('user');
+        $field = new xmldb_field('descriptionformat', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '1', 'description');
+
+        // Launch change of default for field descriptionformat.
+        $dbman->change_field_default($table, $field);
+
+        // Main savepoint reached.
+        upgrade_main_savepoint(true, 2013041601.01);
     }
 
     return true;

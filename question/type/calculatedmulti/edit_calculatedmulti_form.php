@@ -86,6 +86,7 @@ class qtype_calculatedmulti_edit_form extends question_edit_form {
         $repeated[] = $mform->createElement('hidden', 'tolerancetype', 1);
         $repeatedoptions['tolerance']['type'] = PARAM_FLOAT;
         $repeatedoptions['tolerance']['default'] = 0.01;
+        $repeatedoptions['tolerancetype']['type'] = PARAM_INT;
 
         // Create display group.
         $answerdisplay = array();
@@ -115,6 +116,7 @@ class qtype_calculatedmulti_edit_form extends question_edit_form {
         $mform->addElement('hidden', 'initialcategory', 1);
         $mform->addElement('hidden', 'reload', 1);
         $mform->setType('initialcategory', PARAM_INT);
+        $mform->setType('reload', PARAM_BOOL);
 
         $html2 = '';
         $mform->insertElementBefore(
@@ -156,7 +158,6 @@ class qtype_calculatedmulti_edit_form extends question_edit_form {
         $mform->addHelpButton('answeroptions[0]', 'answeroptions', 'qtype_calculatedmulti');
 
         $repeated = array();
-        //   if ($this->editasmultichoice == 1) {
         $nounits = optional_param('nounits', 1, PARAM_INT);
         $mform->addElement('hidden', 'nounits', $nounits);
         $mform->setType('nounits', PARAM_INT);

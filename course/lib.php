@@ -44,11 +44,14 @@ define('COURSE_MAX_SUMMARIES_PER_PAGE', 10);
 define('COURSE_MAX_COURSES_PER_DROPDOWN',1000); //  max courses in log dropdown before switching to optional
 define('COURSE_MAX_USERS_PER_DROPDOWN',1000);   //  max users in log dropdown before switching to optional
 define('FRONTPAGENEWS',           '0');
-define('FRONTPAGECOURSELIST',     '1');
+define('FRONTPAGECOURSELIST',     '1');         // Not used. TODO MDL-38832 remove
 define('FRONTPAGECATEGORYNAMES',  '2');
-define('FRONTPAGETOPICONLY',      '3');
+define('FRONTPAGETOPICONLY',      '3');         // Not used. TODO MDL-38832 remove
 define('FRONTPAGECATEGORYCOMBO',  '4');
-define('FRONTPAGECOURSELIMIT',    200);         // maximum number of courses displayed on the frontpage
+define('FRONTPAGEENROLLEDCOURSELIST', '5');
+define('FRONTPAGEALLCOURSELIST',  '6');
+define('FRONTPAGECOURSESEARCH',   '7');
+define('FRONTPAGECOURSELIMIT',    200);         // Important! Replaced with $CFG->frontpagecourselimit - maximum number of courses displayed on the frontpage. TODO MDL-38832 remove
 define('EXCELROWS', 65535);
 define('FIRSTUSEDEXCELROW', 3);
 
@@ -2825,22 +2828,27 @@ class course_request {
 /**
  * Return a list of page types
  * @param string $pagetype current page type
- * @param stdClass $parentcontext Block's parent context
- * @param stdClass $currentcontext Current context of block
+ * @param context $parentcontext Block's parent context
+ * @param context $currentcontext Current context of block
+ * @return array array of page types
  */
 function course_page_type_list($pagetype, $parentcontext, $currentcontext) {
-    // $currentcontext could be null, get_context_info_array() will throw an error if this is the case.
-    if (isset($currentcontext)) {
-        // if above course context ,display all course fomats
-        list($currentcontext, $course, $cm) = get_context_info_array($currentcontext->id);
-        if ($course->id == SITEID) {
-            return array('*'=>get_string('page-x', 'pagetype'));
-        }
+    if ($pagetype === 'course-index' || $pagetype === 'course-index-category') {
+        // For courses and categories browsing pages (/course/index.php) add option to show on ANY category page
+        $pagetypes = array('*' => get_string('page-x', 'pagetype'),
+            'course-index-*' => get_string('page-course-index-x', 'pagetype'),
+        );
+    } else if ($currentcontext && (!($coursecontext = $currentcontext->get_course_context(false)) || $coursecontext->instanceid == SITEID)) {
+        // We know for sure that despite pagetype starts with 'course-' this is not a page in course context (i.e. /course/search.php, etc.)
+        $pagetypes = array('*' => get_string('page-x', 'pagetype'));
+    } else {
+        // Otherwise consider it a page inside a course even if $currentcontext is null
+        $pagetypes = array('*' => get_string('page-x', 'pagetype'),
+            'course-*' => get_string('page-course-x', 'pagetype'),
+            'course-view-*' => get_string('page-course-view-x', 'pagetype')
+        );
     }
-    return array('*'=>get_string('page-x', 'pagetype'),
-        'course-*'=>get_string('page-course-x', 'pagetype'),
-        'course-view-*'=>get_string('page-course-view-x', 'pagetype')
-    );
+    return $pagetypes;
 }
 
 /**

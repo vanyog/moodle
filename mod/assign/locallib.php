@@ -3091,6 +3091,9 @@ class assign {
     public function can_view_submission($userid) {
         global $USER;
 
+        if (is_siteadmin()) {
+            return true;
+        }
         if (!is_enrolled($this->get_course_context(), $userid)) {
             return false;
         }
@@ -3407,22 +3410,22 @@ class assign {
                                                       $this->get_return_params());
 
                 $o .= $this->get_renderer()->render($feedbackstatus);
+            }
 
-                $allsubmissions = $this->get_all_submissions($user->id);
+            $allsubmissions = $this->get_all_submissions($user->id);
 
-                if (count($allsubmissions) > 1) {
-                    $allgrades = $this->get_all_grades($user->id);
-                    $history = new assign_attempt_history($allsubmissions,
-                                                          $allgrades,
-                                                          $this->get_submission_plugins(),
-                                                          $this->get_feedback_plugins(),
-                                                          $this->get_course_module()->id,
-                                                          $this->get_return_action(),
-                                                          $this->get_return_params(),
-                                                          false);
+            if (count($allsubmissions) > 1) {
+                $allgrades = $this->get_all_grades($user->id);
+                $history = new assign_attempt_history($allsubmissions,
+                                                      $allgrades,
+                                                      $this->get_submission_plugins(),
+                                                      $this->get_feedback_plugins(),
+                                                      $this->get_course_module()->id,
+                                                      $this->get_return_action(),
+                                                      $this->get_return_params(),
+                                                      false);
 
-                    $o .= $this->get_renderer()->render($history);
-                }
+                $o .= $this->get_renderer()->render($history);
             }
 
         }
@@ -5315,7 +5318,7 @@ class assign {
         }
 
         $flags = $this->get_user_flags($userid, true);
-        $flags->locked = 1;
+        $flags->locked = 0;
         $this->update_user_flags($flags);
 
         $user = $DB->get_record('user', array('id' => $userid), '*', MUST_EXIST);

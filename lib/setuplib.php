@@ -1165,7 +1165,7 @@ function disable_output_buffering() {
  */
 function redirect_if_major_upgrade_required() {
     global $CFG;
-    $lastmajordbchanges = 2013022500.01;
+    $lastmajordbchanges = 2013041800.00;
     if (empty($CFG->version) or (float)$CFG->version < $lastmajordbchanges or
             during_initial_install() or !empty($CFG->adminsetuppending)) {
         try {
@@ -1179,6 +1179,30 @@ function redirect_if_major_upgrade_required() {
         echo bootstrap_renderer::plain_redirect_message(htmlspecialchars($url));
         exit;
     }
+}
+
+/**
+ * Makes sure that upgrade process is not running
+ *
+ * To be inserted in the core functions that can not be called by pluigns during upgrade.
+ * Core upgrade should not use any API functions at all.
+ * See {@link http://docs.moodle.org/dev/Upgrade_API#Upgrade_code_restrictions}
+ *
+ * @throws moodle_exception if executed from inside of upgrade script and $warningonly is false
+ * @param bool $warningonly if true displays a warning instead of throwing an exception
+ * @return bool true if executed from outside of upgrade process, false if from inside upgrade process and function is used for warning only
+ */
+function upgrade_ensure_not_running($warningonly = false) {
+    global $CFG;
+    if (!empty($CFG->upgraderunning)) {
+        if (!$warningonly) {
+            throw new moodle_exception('cannotexecduringupgrade');
+        } else {
+            debugging(get_string('cannotexecduringupgrade', 'error'), DEBUG_DEVELOPER);
+            return false;
+        }
+    }
+    return true;
 }
 
 /**

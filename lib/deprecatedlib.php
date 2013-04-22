@@ -1909,7 +1909,7 @@ function print_textarea($usehtmleditor, $rows, $cols, $width, $height, $name, $v
         $editorclass = '';
     }
 
-    $str .= "\n".'<textarea class="form-textarea" id="'. $id .'" name="'. $name .'" rows="'. $rows .'" cols="'. $cols .'">'."\n";
+    $str .= "\n".'<textarea class="form-textarea" id="'. $id .'" name="'. $name .'" rows="'. $rows .'" cols="'. $cols .'" spellcheck="true">'."\n";
     if ($usehtmleditor) {
         $str .= htmlspecialchars($value); // needed for editing of cleaned text!
     } else {
@@ -4280,6 +4280,60 @@ function get_category_courses_array_recursively(array &$flattened, $category) {
 }
 
 /**
+ * Returns a URL based on the context of the current page.
+ * This URL points to blog/index.php and includes filter parameters appropriate for the current page.
+ *
+ * @param stdclass $context
+ * @deprecated since Moodle 2.5 MDL-27814 - please do not use this function any more.
+ * @todo Remove this in 2.7
+ * @return string
+ */
+function blog_get_context_url($context=null) {
+    global $CFG;
+
+    debugging('Function  blog_get_context_url() is deprecated, getting params from context is not reliable for blogs.', DEBUG_DEVELOPER);
+    $viewblogentriesurl = new moodle_url('/blog/index.php');
+
+    if (empty($context)) {
+        global $PAGE;
+        $context = $PAGE->context;
+    }
+
+    // Change contextlevel to SYSTEM if viewing the site course
+    if ($context->contextlevel == CONTEXT_COURSE && $context->instanceid == SITEID) {
+        $context = context_system::instance();
+    }
+
+    $filterparam = '';
+    $strlevel = '';
+
+    switch ($context->contextlevel) {
+        case CONTEXT_SYSTEM:
+        case CONTEXT_BLOCK:
+        case CONTEXT_COURSECAT:
+            break;
+        case CONTEXT_COURSE:
+            $filterparam = 'courseid';
+            $strlevel = get_string('course');
+            break;
+        case CONTEXT_MODULE:
+            $filterparam = 'modid';
+            $strlevel = print_context_name($context);
+            break;
+        case CONTEXT_USER:
+            $filterparam = 'userid';
+            $strlevel = get_string('user');
+            break;
+    }
+
+    if (!empty($filterparam)) {
+        $viewblogentriesurl->param($filterparam, $context->instanceid);
+    }
+
+    return $viewblogentriesurl;
+}
+
+/**
  * Retrieve course records with the course managers and other related records
  * that we need for print_course(). This allows print_courses() to do its job
  * in a constant number of DB queries, regardless of the number of courses,
@@ -4514,4 +4568,111 @@ function get_courses_wmanagers($categoryid=0, $sort="c.sortorder ASC", $fields=a
     }
 
     return $courses;
+}
+
+/**
+ * Converts a nested array tree into HTML ul:li [recursive]
+ *
+ * @deprecated since 2.5
+ *
+ * @param array $tree A tree array to convert
+ * @param int $row Used in identifying the iteration level and in ul classes
+ * @return string HTML structure
+ */
+function convert_tree_to_html($tree, $row=0) {
+    debugging('Function convert_tree_to_html() is deprecated since Moodle 2.5. Consider using class tabtree and core_renderer::render_tabtree()', DEBUG_DEVELOPER);
+
+    $str = "\n".'<ul class="tabrow'.$row.'">'."\n";
+
+    $first = true;
+    $count = count($tree);
+
+    foreach ($tree as $tab) {
+        $count--;   // countdown to zero
+
+        $liclass = '';
+
+        if ($first && ($count == 0)) {   // Just one in the row
+            $liclass = 'first last';
+            $first = false;
+        } else if ($first) {
+            $liclass = 'first';
+            $first = false;
+        } else if ($count == 0) {
+            $liclass = 'last';
+        }
+
+        if ((empty($tab->subtree)) && (!empty($tab->selected))) {
+            $liclass .= (empty($liclass)) ? 'onerow' : ' onerow';
+        }
+
+        if ($tab->inactive || $tab->active || $tab->selected) {
+            if ($tab->selected) {
+                $liclass .= (empty($liclass)) ? 'here selected' : ' here selected';
+            } else if ($tab->active) {
+                $liclass .= (empty($liclass)) ? 'here active' : ' here active';
+            }
+        }
+
+        $str .= (!empty($liclass)) ? '<li class="'.$liclass.'">' : '<li>';
+
+        if ($tab->inactive || $tab->active || ($tab->selected && !$tab->linkedwhenselected)) {
+            // The a tag is used for styling
+            $str .= '<a class="nolink"><span>'.$tab->text.'</span></a>';
+        } else {
+            $str .= '<a href="'.$tab->link.'" title="'.$tab->title.'"><span>'.$tab->text.'</span></a>';
+        }
+
+        if (!empty($tab->subtree)) {
+            $str .= convert_tree_to_html($tab->subtree, $row+1);
+        } else if ($tab->selected) {
+            $str .= '<div class="tabrow'.($row+1).' empty">&nbsp;</div>'."\n";
+        }
+
+        $str .= ' </li>'."\n";
+    }
+    $str .= '</ul>'."\n";
+
+    return $str;
+}
+
+/**
+ * Convert nested tabrows to a nested array
+ *
+ * @deprecated since 2.5
+ *
+ * @param array $tabrows A [nested] array of tab row objects
+ * @param string $selected The tabrow to select (by id)
+ * @param array $inactive An array of tabrow id's to make inactive
+ * @param array $activated An array of tabrow id's to make active
+ * @return array The nested array
+ */
+function convert_tabrows_to_tree($tabrows, $selected, $inactive, $activated) {
+
+    debugging('Function convert_tabrows_to_tree() is deprecated since Moodle 2.5. Consider using class tabtree', DEBUG_DEVELOPER);
+
+    // Work backwards through the rows (bottom to top) collecting the tree as we go.
+    $tabrows = array_reverse($tabrows);
+
+    $subtree = array();
+
+    foreach ($tabrows as $row) {
+        $tree = array();
+
+        foreach ($row as $tab) {
+            $tab->inactive = in_array((string)$tab->id, $inactive);
+            $tab->active = in_array((string)$tab->id, $activated);
+            $tab->selected = (string)$tab->id == $selected;
+
+            if ($tab->active || $tab->selected) {
+                if ($subtree) {
+                    $tab->subtree = $subtree;
+                }
+            }
+            $tree[] = $tab;
+        }
+        $subtree = $tree;
+    }
+
+    return $subtree;
 }

@@ -387,8 +387,9 @@ class badge {
             $issued->dateexpire = null;
         }
 
-        // Issued badges always being issued as private.
-        $issued->visible = 0;
+        // Take into account user badges privacy settings.
+        // If none set, badges default visibility is set to public.
+        $issued->visible = get_user_preferences('badgeprivacysetting', 1, $userid);
 
         $result = $DB->insert_record('badge_issued', $issued, true);
 
@@ -855,8 +856,9 @@ function badges_get_issued_badge_info($hash) {
         $url = new moodle_url('/badges/badge.php', array('hash' => $hash));
 
         // Recipient's email is hashed: <algorithm>$<hash(email + salt)>.
-        $a['recipient'] = 'sha256$' . hash('sha256', $record->email . $CFG->badges_badgesalt);
-        $a['salt'] = $CFG->badges_badgesalt;
+        $badgesalt = isset($CFG->badgesalt) ? $CFG->badgesalt : '';
+        $a['recipient'] = 'sha256$' . hash('sha256', $record->email . $badgesalt);
+        $a['salt'] = $badgesalt;
 
         if ($record->dateexpire) {
             $a['expires'] = date('Y-m-d', $record->dateexpire);
@@ -891,7 +893,7 @@ function badges_add_course_navigation(navigation_node $coursenode, stdClass $cou
     $coursecontext = context_course::instance($course->id);
     $isfrontpage = (!$coursecontext || $course->id == $SITE->id);
 
-    if ($CFG->enablebadges && $CFG->badges_allowcoursebadges && !$isfrontpage) {
+    if (!empty($CFG->enablebadges) && !empty($CFG->badges_allowcoursebadges) && !$isfrontpage) {
         if (has_capability('moodle/badges:configuredetails', $coursecontext)) {
             $coursenode->add(get_string('coursebadges', 'badges'), null,
                     navigation_node::TYPE_CONTAINER, null, 'coursebadges',
@@ -1149,7 +1151,7 @@ function badges_bake($hash, $badgeid, $userid = 0, $pathhash = false) {
 }
 
 /**
- * Returns backpack service settings.
+ * Returns external backpack settings and badges from this backpack.
  *
  * @param int $userid Backpack user ID.
  * @return null|object Returns null is there is no backpack or object with backpack settings.
@@ -1158,14 +1160,30 @@ function get_backpack_settings($userid) {
     global $DB;
     require_once(dirname(dirname(__FILE__)) . '/badges/lib/backpacklib.php');
 
-    $record = $DB->get_record('badge_backpack', array('userid' => $userid), '*', IGNORE_MISSING);
+    $record = $DB->get_record('badge_backpack', array('userid' => $userid));
     if ($record) {
         $backpack = new OpenBadgesBackpackHandler($record);
         $out = new stdClass();
         $out->backpackurl = $backpack->get_url();
-        $badges = $backpack->get_badges();
-        $out->badges = isset($badges->badges) ? $badges->badges : array();
-        $out->totalbadges = count($out->badges);
+
+        if ($collections = $DB->get_records('badge_external', array('backpackid' => $record->id))) {
+            $out->totalcollections = count($collections);
+            $out->totalbadges = 0;
+            $out->badges = array();
+            foreach ($collections as $collection) {
+                $badges = $backpack->get_badges($collection->collectionid);
+                if (isset($badges->badges)) {
+                    $out->badges = array_merge($out->badges, $badges->badges);
+                    $out->totalbadges += count($out->badges);
+                } else {
+                    $out->badges = array_merge($out->badges, array());
+                }
+            }
+        } else {
+            $out->totalbadges = 0;
+            $out->totalcollections = 0;
+        }
+
         return $out;
     }
 
@@ -1228,7 +1246,7 @@ function profile_display_badges($userid, $courseid = 0) {
         }
 
         // Print external badges.
-        if ($courseid == 0 && $CFG->badges_allowexternalbackpack) {
+        if ($courseid == 0 && !empty($CFG->badges_allowexternalbackpack)) {
             $backpack = get_backpack_settings($userid);
             if (isset($backpack->totalbadges) && $backpack->totalbadges !== 0) {
                 $left = get_string('externalbadgesp', 'badges');
@@ -1257,9 +1275,8 @@ function badges_check_backpack_accessibility() {
     $options = array(
         'FRESH_CONNECT' => true,
         'RETURNTRANSFER' => true,
-        'FORBID_REUSE' => true,
         'HEADER' => 0,
-        'CONNECTTIMEOUT_MS' => 1000,
+        'CONNECTTIMEOUT_MS' => 2000,
     );
     $location = 'http://backpack.openbadges.org/baker';
     $out = $curl->get($location, array('assertion' => $fakeassertion->out(false)), $options);
@@ -1276,4 +1293,15 @@ function badges_check_backpack_accessibility() {
     }
 
     return false;
+}
+
+/**
+ * Checks if user has external backpack connected.
+ *
+ * @param int $userid ID of a user.
+ * @return bool True|False whether backpack connection exists.
+ */
+function badges_user_has_backpack($userid) {
+    global $DB;
+    return $DB->record_exists('badge_backpack', array('userid' => $userid));
 }
