@@ -176,7 +176,7 @@ function report_log_print_mnet_selector_form($hostid, $course, $selecteduser=0, 
         }
     }
 
-    $hostarray[$CFG->mnet_localhost_id] = $SITE->fullname;
+    $hostarray[$CFG->mnet_localhost_id] = strip_tags(format_string($SITE->fullname));
     asort($hostarray);
 
     $dropdown = array();
