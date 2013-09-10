@@ -98,7 +98,7 @@ class behat_form_field {
     /**
      * Guesses the element type we are dealing with in case is not a text-based element.
      *
-     * This class is the generic field type, behat_field_manager::get_field()
+     * This class is the generic field type, behat_field_manager::get_form_field()
      * should be able to find the appropiate class for the field type, but
      * in cases like moodle form group elements we can not find the type of
      * the field through the DOM so we also need to take care of the
@@ -112,7 +112,7 @@ class behat_form_field {
         global $CFG;
 
         // Textareas are considered text based elements.
-        $tagname = $this->field->getTagName();
+        $tagname = strtolower($this->field->getTagName());
         if ($tagname == 'textarea') {
             return false;
         }
@@ -131,16 +131,27 @@ class behat_form_field {
                 default:
                     return false;
             }
-        }
 
-        // Select tag.
-        if ($tagname == 'select') {
+        } else if ($tagname == 'select') {
+            // Select tag.
             $classname = 'behat_form_select';
+
+        } else {
+            return false;
         }
 
         $classpath = $CFG->dirroot . '/lib/behat/form_field/' . $classname . '.php';
         require_once($classpath);
         return new $classname($this->session, $this->field);
+    }
+
+    /**
+     * Returns whether the scenario is running in a browser that can run Javascript or not.
+     *
+     * @return bool
+     */
+    protected function running_javascript() {
+        return get_class($this->session->getDriver()) !== 'Behat\Mink\Driver\GoutteDriver';
     }
 
 }

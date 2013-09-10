@@ -17,8 +17,7 @@
 /**
  * Meta course enrolment plugin.
  *
- * @package    enrol
- * @subpackage meta
+ * @package    enrol_meta
  * @copyright  2010 Petr Skoda {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -46,7 +45,9 @@ class enrol_meta_plugin extends enrol_plugin {
             return get_string('pluginname', 'enrol_'.$enrol);
         } else if (empty($instance->name)) {
             $enrol = $this->get_name();
-            return get_string('pluginname', 'enrol_'.$enrol) . ' (' . format_string($DB->get_field('course', 'fullname', array('id'=>$instance->customint1))) . ')';
+            $course = $DB->get_record('course', array('id'=>$instance->customint1));
+            $coursename = format_string(get_course_display_name_for_list($course));
+            return get_string('pluginname', 'enrol_' . $enrol) . ' (' . $coursename . ')';
         } else {
             return format_string($instance->name);
         }

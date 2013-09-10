@@ -18,8 +18,7 @@
  * Authentication Plugin: Manual Authentication
  * Just does a simple check against the moodle database.
  *
- * @package    auth
- * @subpackage manual
+ * @package    auth_manual
  * @copyright  1999 onwards Martin Dougiamas (http://dougiamas.com)
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -127,6 +126,15 @@ class auth_plugin_manual extends auth_plugin_base {
      * @return bool
      */
     function can_reset_password() {
+        return true;
+    }
+
+    /**
+     * Returns true if plugin can be manually set.
+     *
+     * @return bool
+     */
+    function can_be_manually_set() {
         return true;
     }
 

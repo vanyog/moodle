@@ -1,7 +1,7 @@
-@mod_forum
+@mod @mod_forum
 Feature: Set a certain number of discussions as a completion condition for a forum
   In order to ensure students are participating on forums
-  As a moodle teacher
+  As a teacher
   I need to set a minimum number of discussions to mark the forum activity as completed
 
   @javascript
@@ -27,7 +27,7 @@ Feature: Set a certain number of discussions as a completion condition for a for
     And I turn editing mode on
     And I follow "Edit settings"
     And I fill the moodle form with:
-      | Completion tracking | Enabled, control via completion and activity settings |
+      | Enable completion tracking | Yes |
     And I press "Save changes"
     When I add a "Forum" to section "1" and I fill the form with:
       | Forum name | Test forum name |
@@ -38,7 +38,7 @@ Feature: Set a certain number of discussions as a completion condition for a for
     And I log out
     And I log in as "student1"
     And I follow "Course 1"
-    Then I hover "//li[contains(concat(' ', @class, ' '), ' modtype_forum ')]/descendant::img[@alt='Not completed: Test forum name']" "xpath_element"
+    Then I hover "//li[contains(concat(' ', normalize-space(@class), ' '), ' modtype_forum ')]/descendant::img[@alt='Not completed: Test forum name']" "xpath_element"
     And I add a new discussion to "Test forum name" forum with:
       | Subject | Post 1 subject |
       | Message | Body 1 content |
@@ -46,7 +46,7 @@ Feature: Set a certain number of discussions as a completion condition for a for
       | Subject | Post 2 subject |
       | Message | Body 2 content |
     And I follow "Course 1"
-    And I hover "//li[contains(concat(' ', @class, ' '), ' modtype_forum ')]/descendant::img[contains(@alt, 'Completed: Test forum name')]" "xpath_element"
+    And I hover "//li[contains(concat(' ', normalize-space(@class), ' '), ' modtype_forum ')]/descendant::img[contains(@alt, 'Completed: Test forum name')]" "xpath_element"
     And I log out
     And I log in as "teacher1"
     And I follow "Course 1"

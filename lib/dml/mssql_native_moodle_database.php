@@ -99,21 +99,6 @@ class mssql_native_moodle_database extends moodle_database {
     }
 
     /**
-     * Returns localised database description
-     * Note: can be used before connect()
-     * @return string
-     */
-    public function get_configuration_hints() {
-        $str = get_string('databasesettingssub_mssql', 'install');
-        $str .= "<p style='text-align:right'><a href=\"javascript:void(0)\" ";
-        $str .= "onclick=\"return window.open('http://docs.moodle.org/en/Installing_MSSQL_for_PHP')\"";
-        $str .= ">";
-        $str .= '<img src="pix/docs.gif' . '" alt="Docs" class="iconhelp" />';
-        $str .= get_string('moodledocslink', 'install') . '</a></p>';
-        return $str;
-    }
-
-    /**
      * Connect to db
      * Must be called before other methods.
      * @param string $dbhost The database host.
@@ -140,7 +125,8 @@ class mssql_native_moodle_database extends moodle_database {
         $this->store_settings($dbhost, $dbuser, $dbpass, $dbname, $prefix, $dboptions);
 
         $dbhost = $this->dbhost;
-        if (isset($dboptions['dbport'])) {
+        // Zero shouldn't be used as a port number so doing a check with empty() should be fine.
+        if (!empty($dboptions['dbport'])) {
             if (stristr(PHP_OS, 'win') && !stristr(PHP_OS, 'darwin')) {
                 $dbhost .= ','.$dboptions['dbport'];
             } else {
@@ -410,11 +396,16 @@ class mssql_native_moodle_database extends moodle_database {
      * @return array array of database_column_info objects indexed with column names
      */
     public function get_columns($table, $usecache=true) {
-        if ($usecache and isset($this->columns[$table])) {
-            return $this->columns[$table];
+
+        if ($usecache) {
+            $properties = array('dbfamily' => $this->get_dbfamily(), 'settings' => $this->get_settings_hash());
+            $cache = cache::make('core', 'databasemeta', $properties);
+            if ($data = $cache->get($table)) {
+                return $data;
+            }
         }
 
-        $this->columns[$table] = array();
+        $structure = array();
 
         if (!$this->temptables->is_temptable($table)) { // normal table, get metadata from own schema
             $sql = "SELECT column_name AS name,
@@ -473,9 +464,15 @@ class mssql_native_moodle_database extends moodle_database {
             // id columns being auto_incremnt are PK by definition
             $info->primary_key = ($info->name == 'id' && $info->meta_type == 'R' && $info->auto_increment);
 
-            // Put correct length for character and LOB types
-            $info->max_length = $info->meta_type == 'C' ? $rawcolumn->char_max_length : $rawcolumn->max_length;
-            $info->max_length = ($info->meta_type == 'X' || $info->meta_type == 'B') ? -1 : $info->max_length;
+            if ($info->meta_type === 'C' and $rawcolumn->char_max_length == -1) {
+                // This is NVARCHAR(MAX), not a normal NVARCHAR.
+                $info->max_length = -1;
+                $info->meta_type = 'X';
+            } else {
+                // Put correct length for character and LOB types
+                $info->max_length = $info->meta_type == 'C' ? $rawcolumn->char_max_length : $rawcolumn->max_length;
+                $info->max_length = ($info->meta_type == 'X' || $info->meta_type == 'B') ? -1 : $info->max_length;
+            }
 
             // Scale
             $info->scale = $rawcolumn->scale ? $rawcolumn->scale : false;
@@ -494,11 +491,15 @@ class mssql_native_moodle_database extends moodle_database {
             // Process binary
             $info->binary = $info->meta_type == 'B' ? true : false;
 
-            $this->columns[$table][$info->name] = new database_column_info($info);
+            $structure[$info->name] = new database_column_info($info);
         }
         $this->free_result($result);
 
-        return $this->columns[$table];
+        if ($usecache) {
+            $result = $cache->set($table, $structure);
+        }
+
+        return $structure;
     }
 
     /**
@@ -578,6 +579,7 @@ class mssql_native_moodle_database extends moodle_database {
                 $type = 'X';
                 break;
             case 'IMAGE':
+            case 'VARBINARY':
             case 'VARBINARY(MAX)':
                 $type = 'B';
                 break;
@@ -616,8 +618,8 @@ class mssql_native_moodle_database extends moodle_database {
             return $sql;
         }
         // ok, we have verified sql statement with ? and correct number of params
-        $parts = explode('?', $sql);
-        $return = array_shift($parts);
+        $parts = array_reverse(explode('?', $sql));
+        $return = array_pop($parts);
         foreach ($params as $param) {
             if (is_bool($param)) {
                 $return .= (int)$param;
@@ -639,10 +641,11 @@ class mssql_native_moodle_database extends moodle_database {
 
             } else {
                 $param = str_replace("'", "''", $param);
+                $param = str_replace("\0", "", $param);
                 $return .= "N'$param'";
             }
 
-            $return .= array_shift($parts);
+            $return .= array_pop($parts);
         }
         return $return;
     }
@@ -1218,7 +1221,7 @@ class mssql_native_moodle_database extends moodle_database {
     }
 
     public function sql_order_by_text($fieldname, $numchars=32) {
-        return ' CONVERT(varchar, ' . $fieldname . ', ' . $numchars . ')';
+        return " CONVERT(varchar({$numchars}), {$fieldname})";
     }
 
    /**

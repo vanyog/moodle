@@ -1,20 +1,29 @@
 <?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @author Martin Dougiamas
- * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
- * @package moodle multiauth
- *
  * Authentication Plugin: Moodle Network Authentication
- *
  * Multiple host authentication support for Moodle Network.
  *
- * 2006-11-01  File created.
+ * @package auth_mnet
+ * @author Martin Dougiamas
+ * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
  */
 
-if (!defined('MOODLE_INTERNAL')) {
-    die('Direct access to this script is forbidden.');    ///  It must be included from a Moodle page
-}
+defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir.'/authlib.php');
 
@@ -137,7 +146,7 @@ class auth_plugin_mnet extends auth_plugin_base {
         }
 
         // check remote login permissions
-        if (! has_capability('moodle/site:mnetlogintoremote', get_system_context())
+        if (! has_capability('moodle/site:mnetlogintoremote', context_system::instance())
                 or is_mnet_remote_user($USER)
                 or isguestuser()
                 or !isloggedin()) {
@@ -207,6 +216,7 @@ class auth_plugin_mnet extends auth_plugin_base {
         global $CFG, $DB;
         require_once $CFG->dirroot . '/mnet/xmlrpc/client.php';
         require_once $CFG->libdir . '/gdlib.php';
+        require_once($CFG->dirroot.'/user/lib.php');
 
         // verify the remote host is configured locally before attempting RPC call
         if (! $remotehost = $DB->get_record('mnet_host', array('wwwroot' => $remotepeer->wwwroot, 'deleted' => 0))) {
@@ -352,8 +362,7 @@ class auth_plugin_mnet extends auth_plugin_base {
         if (empty($localuser->firstaccess)) { // Now firstaccess, grab it here
             $localuser->firstaccess = time();
         }
-
-        $DB->update_record('user', $localuser);
+        user_update_user($localuser, false);
 
         if (!$firsttime) {
             // repeat customer! let the IDP know about enrolments

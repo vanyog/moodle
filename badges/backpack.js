@@ -2,7 +2,20 @@
  * Push badges to backpack.
  */
 function addtobackpack(event, args) {
-    OpenBadges.issue([args.assertion], function(errors, successes) { });
+    var badgetable = Y.one('#issued-badge-table');
+    var errordiv = Y.one('#addtobackpack-error');
+    var errortext = M.util.get_string('error:backpackproblem', 'badges');
+    var errorhtml = '<div id="addtobackpack-error" class="box boxaligncenter notifyproblem">' + errortext + '</div>';
+
+    if (typeof OpenBadges !== 'undefined') {
+        OpenBadges.issue([args.assertion], function(errors, successes) { });
+    } else {
+        // Add error div if it doesn't exist yet.
+        if (!errordiv) {
+            var badgerror = Y.Node.create(errorhtml);
+            badgetable.insert(badgerror, 'before');
+        }
+    }
 }
 
 /**
@@ -10,19 +23,23 @@ function addtobackpack(event, args) {
  */
 function check_site_access() {
     var add = Y.one('#check_connection');
-    var callback = {
-        success: function(o) {
-            var data = Y.JSON.parse(o.responseText);
-            if (data.code == 'http-unreachable') {
-                add.setHTML(data.response);
-                add.removeClass('hide');
-            }
-        },
-        failure: function(o) { }
-    };
 
-    YUI().use('yui2-connection', function (Y) {
-        Y.YUI2.util.Connect.asyncRequest('GET', 'ajax.php', callback, null);
+    var callback = {
+            method: "GET",
+            on: {
+                success: function(id, o, args) {
+                            var data = Y.JSON.parse(o.responseText);
+                            if (data.code == 'http-unreachable') {
+                                add.setHTML(data.response);
+                                add.removeClass('hide');
+                            }
+                        },
+                failure: function(o) { }
+            }
+        };
+
+    Y.use('io-base', function(Y) {
+        Y.io('ajax.php', callback);
     });
 
     return false;

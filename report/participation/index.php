@@ -63,8 +63,6 @@ require_login($course);
 $context = context_course::instance($course->id);
 require_capability('report/participation:view', $context);
 
-add_to_log($course->id, "course", "report participation", "report/participation/index.php?id=$course->id", $course->id);
-
 $strparticipation = get_string('participationreport');
 $strviews         = get_string('views');
 $strposts         = get_string('posts');
@@ -83,6 +81,14 @@ if (!array_key_exists($action, $actionoptions)) {
 $PAGE->set_title($course->shortname .': '. $strparticipation);
 $PAGE->set_heading($course->fullname);
 echo $OUTPUT->header();
+
+// Trigger a content view event.
+$event = \report_participation\event\content_viewed::create(array('courseid' => $course->id,
+                                                               'other'    => array('content' => 'participants')));
+$event->set_page_detail();
+$event->set_legacy_logdata(array($course->id, "course", "report participation",
+        "report/participation/index.php?id=$course->id", $course->id));
+$event->trigger();
 
 $modinfo = get_fast_modinfo($course);
 
@@ -214,14 +220,16 @@ if (!empty($instanceid) && !empty($roleid)) {
     list($actionsql, $params) = $DB->get_in_or_equal($actions, SQL_PARAMS_NAMED, 'action');
     $actionsql = "action $actionsql";
 
-    $relatedcontexts = get_related_contexts_string($context);
+    // We want to query both the current context and parent contexts.
+    list($relatedctxsql, $relatedctxparams) = $DB->get_in_or_equal($context->get_parent_context_ids(true), SQL_PARAMS_NAMED, 'relatedctx');
 
     $sql = "SELECT ra.userid, u.firstname, u.lastname, u.idnumber, l.actioncount AS count
-            FROM (SELECT * FROM {role_assignments} WHERE contextid $relatedcontexts AND roleid = :roleid ) ra
+            FROM (SELECT * FROM {role_assignments} WHERE contextid $relatedctxsql AND roleid = :roleid ) ra
             JOIN {user} u ON u.id = ra.userid
             LEFT JOIN (
                 SELECT userid, COUNT(action) AS actioncount FROM {log} WHERE cmid = :instanceid AND time > :timefrom AND $actionsql GROUP BY userid
             ) l ON (l.userid = ra.userid)";
+    $params = array_merge($params, $relatedctxparams);
     $params['roleid'] = $roleid;
     $params['instanceid'] = $instanceid;
     $params['timefrom'] = $timefrom;
@@ -239,7 +247,7 @@ if (!empty($instanceid) && !empty($roleid)) {
     $countsql = "SELECT COUNT(DISTINCT(ra.userid))
                    FROM {role_assignments} ra
                    JOIN {user} u ON u.id = ra.userid
-                  WHERE ra.contextid $relatedcontexts AND ra.roleid = :roleid";
+                  WHERE ra.contextid $relatedctxsql AND ra.roleid = :roleid";
 
     $totalcount = $DB->count_records_sql($countsql, $params);
 

@@ -96,21 +96,23 @@ class scorm_interactions_report extends scorm_default_report {
 
         if (empty($currentgroup)) {
             // all users who can attempt scoes
-            if (!$students = get_users_by_capability($contextmodule, 'mod/scorm:savetrack', '', '', '', '', '', '', false)) {
+            if (!$students = get_users_by_capability($contextmodule, 'mod/scorm:savetrack', 'u.id', '', '', '', '', '', false)) {
                 echo $OUTPUT->notification(get_string('nostudentsyet'));
                 $nostudents = true;
                 $allowedlist = '';
             } else {
                 $allowedlist = array_keys($students);
             }
+            unset($students);
         } else {
             // all users who can attempt scoes and who are in the currently selected group
-            if (!$groupstudents = get_users_by_capability($contextmodule, 'mod/scorm:savetrack', '', '', '', '', $currentgroup, '', false)) {
+            if (!$groupstudents = get_users_by_capability($contextmodule, 'mod/scorm:savetrack', 'u.id', '', '', '', $currentgroup, '', false)) {
                 echo $OUTPUT->notification(get_string('nostudentsingroup'));
                 $nostudents = true;
                 $groupstudents = array();
             }
             $allowedlist = array_keys($groupstudents);
+            unset($groupstudents);
         }
         if ( !$nostudents ) {
             // Now check if asked download of data
@@ -156,10 +158,10 @@ class scorm_interactions_report extends scorm_default_report {
 
             $params = array();
             list($usql, $params) = $DB->get_in_or_equal($allowedlist, SQL_PARAMS_NAMED);
-                                    // Construct the SQL
+            // Construct the SQL
             $select = 'SELECT DISTINCT '.$DB->sql_concat('u.id', '\'#\'', 'COALESCE(st.attempt, 0)').' AS uniqueid, ';
             $select .= 'st.scormid AS scormid, st.attempt AS attempt, ' .
-                    'u.id AS userid, u.idnumber, u.firstname, u.lastname, u.picture, u.imagealt, u.email'.
+                    user_picture::fields('u', array('idnumber'), 'userid') .
                     get_extra_user_fields_sql($coursecontext, 'u', '', array('email', 'idnumber')) . ' ';
 
             // This part is the same for all cases - join users and scorm_scoes_track tables
@@ -417,9 +419,10 @@ class scorm_interactions_report extends scorm_default_report {
                                     'id'=>$scouser->userid,
                                     'picture'=>$scouser->picture,
                                     'imagealt'=>$scouser->imagealt,
-                                    'email'=>$scouser->email,
-                                    'firstname'=>$scouser->firstname,
-                                    'lastname'=>$scouser->lastname);
+                                    'email'=>$scouser->email);
+                        foreach (get_all_user_name_fields() as $addname) {
+                            $user->$addname = $scouser->$addname;
+                        }
                         $row[] = $OUTPUT->user_picture($user, array('courseid'=>$course->id));
                     }
                     if (!$download) {

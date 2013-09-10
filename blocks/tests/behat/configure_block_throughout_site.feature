@@ -1,7 +1,7 @@
-@blocks @admin
+@core @core_block
 Feature: Add and configure blocks throughout the site
   In order to maintain some patterns across all the site
-  As a moodle manager
+  As a manager
   I need to set and configure blocks throughout the site
 
   @javascript
@@ -32,4 +32,4 @@ Feature: Add and configure blocks throughout the site
     And I press "Save changes"
     And I follow "Course 1"
     # The first block matching the pattern should be top-left block
-    And I should see "Comments" in the "//*[@id='region-pre']/descendant::div[contains(concat(' ', @class, ' '), ' block ')]" "xpath_element"
+    And I should see "Comments" in the "//*[@id='region-pre']/descendant::div[contains(concat(' ', normalize-space(@class), ' '), ' block ')]" "xpath_element"

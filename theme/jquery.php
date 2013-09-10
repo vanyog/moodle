@@ -62,11 +62,7 @@ if ($component === 'core') {
     }
 
 } else {
-    define('ABORT_AFTER_CONFIG_CANCEL', true);
-    define('NO_MOODLE_COOKIES', true); // Session not used here.
-    define('NO_UPGRADE_CHECK', true);  // Ignore upgrade check.
-    require("$CFG->dirroot/lib/setup.php");
-    $componentdir = get_component_directory($component);
+    $componentdir = core_component::get_component_directory($component);
 }
 
 if (!file_exists($componentdir) or !file_exists("$componentdir/jquery/plugins.php")) {
@@ -118,13 +114,13 @@ if (!empty($_SERVER['HTTP_IF_NONE_MATCH']) || !empty($_SERVER['HTTP_IF_MODIFIED_
     header('Expires: '. gmdate('D, d M Y H:i:s', time() + $lifetime) .' GMT');
     header('Cache-Control: public, max-age='.$lifetime);
     header('Content-Type: '.$mimetype);
-    header('Etag: '.$etag);
+    header('Etag: "'.$etag.'"');
     die;
 }
 
 require_once("$CFG->dirroot/lib/xsendfilelib.php");
 
-header('Etag: '.$etag);
+header('Etag: "'.$etag.'"');
 header('Content-Disposition: inline; filename="'.$filename.'"');
 header('Last-Modified: '. gmdate('D, d M Y H:i:s', filemtime($file)) .' GMT');
 header('Expires: '. gmdate('D, d M Y H:i:s', time() + $lifetime) .' GMT');

@@ -60,11 +60,12 @@ class OpenBadgesBackpackHandler {
         }
 
         $options = array(
-            'FRESH_CONNECT' => true,
+            'FRESH_CONNECT'  => true,
             'RETURNTRANSFER' => true,
-            'FORBID_REUSE' => true,
-            'HEADER' => 0,
-            'CONNECTTIMEOUT_MS' => 3000,
+            'FORBID_REUSE'   => true,
+            'HEADER'         => 0,
+            'HTTPHEADER'     => array('Expect:'),
+            'CONNECTTIMEOUT' => 3,
         );
 
         if ($action == 'user') {

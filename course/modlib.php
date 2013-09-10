@@ -99,7 +99,7 @@ function add_moduleinfo($moduleinfo, $course, $mform = null) {
     if (!$returnfromfunc or !is_number($returnfromfunc)) {
         // Undo everything we can.
         $modcontext = context_module::instance($moduleinfo->coursemodule);
-        delete_context(CONTEXT_MODULE, $moduleinfo->coursemodule);
+        context_helper::delete_instance(CONTEXT_MODULE, $moduleinfo->coursemodule);
         $DB->delete_records('course_modules', array('id'=>$moduleinfo->coursemodule));
 
         if (!is_number($returnfromfunc)) {
@@ -438,7 +438,7 @@ function update_moduleinfo($cm, $moduleinfo, $course, $mform = null) {
     }
 
     $completion = new completion_info($course);
-    if ($completion->is_enabled()) {
+    if ($completion->is_enabled() && !empty($moduleinfo->completionunlocked)) {
         // Update completion settings.
         $cm->completion                = $moduleinfo->completion;
         $cm->completiongradeitemnumber = $moduleinfo->completiongradeitemnumber;

@@ -58,7 +58,7 @@ $leftcols = 1 + count($extrafields);
 function csv_quote($value) {
     global $excel;
     if ($excel) {
-        return textlib::convert('"'.str_replace('"',"'",$value).'"','UTF-8','UTF-16LE');
+        return core_text::convert('"'.str_replace('"',"'",$value).'"','UTF-8','UTF-16LE');
     } else {
         return '"'.str_replace('"',"'",$value).'"';
     }
@@ -133,7 +133,7 @@ if ($csv && $grandtotal && count($activities)>0) { // Only show CSV if there are
 
     $shortname = format_string($course->shortname, true, array('context' => $context));
     header('Content-Disposition: attachment; filename=progress.'.
-        preg_replace('/[^a-z0-9-]/','_',textlib::strtolower(strip_tags($shortname))).'.csv');
+        preg_replace('/[^a-z0-9-]/','_',core_text::strtolower(strip_tags($shortname))).'.csv');
     // Unicode byte-order mark for Excel
     if ($excel) {
         header('Content-Type: text/csv; charset=UTF-16LE');
@@ -146,8 +146,6 @@ if ($csv && $grandtotal && count($activities)>0) { // Only show CSV if there are
         $line="\n";
     }
 } else {
-    // Use SVG to draw sideways text if supported
-    $svgcleverness = can_use_rotated_text();
 
     // Navigation and header
     $strreports = get_string("reports");
@@ -156,11 +154,8 @@ if ($csv && $grandtotal && count($activities)>0) { // Only show CSV if there are
     $PAGE->set_title($strcompletion);
     $PAGE->set_heading($course->fullname);
     echo $OUTPUT->header();
-
-    if ($svgcleverness) {
-        $PAGE->requires->js('/report/progress/textrotate.js');
-        $PAGE->requires->js_function_call('textrotate_init', null, true);
-    }
+    $PAGE->requires->js('/report/progress/textrotate.js');
+    $PAGE->requires->js_function_call('textrotate_init', null, true);
 
     // Handle groups (if enabled)
     groups_print_course_menu($course,$CFG->wwwroot.'/report/progress/?course='.$course->id);
@@ -280,7 +275,7 @@ if (!$csv) {
     }
 
     print '<div id="completion-progress-wrapper" class="no-overflow">';
-    print '<table id="completion-progress" class="generaltable flexible boxaligncenter" style="text-align:left"><tr style="vertical-align:top">';
+    print '<table id="completion-progress" class="generaltable flexible boxaligncenter" style="text-align:left"><thead><tr style="vertical-align:top">';
 
     // User heading / sort option
     print '<th scope="col" class="completion-sortchoice">';
@@ -343,7 +338,7 @@ foreach($activities as $activity) {
 if ($csv) {
     print $line;
 } else {
-    print '</tr>';
+    print '</tr></thead><tbody>';
 }
 
 // Row for each user
@@ -415,7 +410,7 @@ foreach($progress as $user) {
 if ($csv) {
     exit;
 }
-print '</table>';
+print '</tbody></table>';
 print '</div>';
 print $pagingbar;
 

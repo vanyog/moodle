@@ -1036,7 +1036,20 @@ class completion_info {
         }
         $transaction->allow_commit();
 
-        events_trigger('activity_completion_changed', $data);
+        $cmcontext = context_module::instance($data->coursemoduleid, MUST_EXIST);
+        $coursecontext = $cmcontext->get_parent_context();
+
+        // Trigger an event for course module completion changed.
+        $event = \core\event\course_module_completion_updated::create(
+            array('objectid' => $data->id,
+                'userid' => $USER->id,
+                'context' => $cmcontext,
+                'courseid' => $coursecontext->instanceid,
+                'other' => array('relateduserid' => $data->userid)
+                )
+            );
+        $event->add_record_snapshot('course_modules_completion', $data);
+        $event->trigger();
 
         if ($data->userid == $USER->id) {
             $SESSION->completioncache[$cm->course][$cm->id] = $data;
@@ -1045,40 +1058,36 @@ class completion_info {
         }
     }
 
+     /**
+     * Return whether or not the course has activities with completion enabled.
+     *
+     * @return boolean true when there is at least one activity with completion enabled.
+     */
+    public function has_activities() {
+        $modinfo = get_fast_modinfo($this->course);
+        foreach ($modinfo->get_cms() as $cm) {
+            if ($cm->completion != COMPLETION_TRACKING_NONE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Obtains a list of activities for which completion is enabled on the
      * course. The list is ordered by the section order of those activities.
      *
-     * @param array $modinfo For unit testing only, supply the value
-     *   here. Otherwise the method calls get_fast_modinfo
      * @return array Array from $cmid => $cm of all activities with completion enabled,
      *   empty array if none
      */
-    public function get_activities($modinfo=null) {
-        global $DB;
-
-        // Obtain those activities which have completion turned on
-        $withcompletion = $DB->get_records_select('course_modules', 'course='.$this->course->id.
-          ' AND completion<>'.COMPLETION_TRACKING_NONE);
-        if (!$withcompletion) {
-            return array();
-        }
-
-        // Use modinfo to get section order and also add in names
-        if (empty($modinfo)) {
-            $modinfo = get_fast_modinfo($this->course);
-        }
+    public function get_activities() {
+        $modinfo = get_fast_modinfo($this->course);
         $result = array();
-        foreach ($modinfo->sections as $sectioncms) {
-            foreach ($sectioncms as $cmid) {
-                if (array_key_exists($cmid, $withcompletion)) {
-                    $result[$cmid] = $withcompletion[$cmid];
-                    $result[$cmid]->modname = $modinfo->cms[$cmid]->modname;
-                    $result[$cmid]->name    = $modinfo->cms[$cmid]->name;
-                }
+        foreach ($modinfo->get_cms() as $cm) {
+            if ($cm->completion != COMPLETION_TRACKING_NONE) {
+                $result[$cm->id] = $cm;
             }
         }
-
         return $result;
     }
 

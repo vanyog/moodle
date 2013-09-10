@@ -26,9 +26,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-global $CFG;
-require_once($CFG->dirroot.'/'.$CFG->admin.'/tool/installaddon/classes/installer.php');
-
 
 /**
  * Unit tests for the {@link tool_installaddon_installer} class
@@ -124,6 +121,27 @@ class tool_installaddon_installer_test extends advanced_testcase {
             'version' => 2012123199,
         )));
         $this->assertSame(false, $installer->testable_decode_remote_request($request));
+
+        $request = base64_encode(json_encode(array(
+            'name' => 'Bogus module name',
+            'component' => 'mod_xxx_yyy',
+            'version' => 2012123190,
+        )));
+        $this->assertSame(false, $installer->testable_decode_remote_request($request));
+    }
+
+    public function test_move_directory() {
+        $jobid = md5(rand().uniqid('test_', true));
+        $jobroot = make_temp_directory('tool_installaddon/'.$jobid);
+        $contentsdir = make_temp_directory('tool_installaddon/'.$jobid.'/contents/sub/folder');
+        file_put_contents($contentsdir.'/readme.txt', 'Hello world!');
+
+        $installer = tool_installaddon_installer::instance();
+        $installer->move_directory($jobroot.'/contents', $jobroot.'/moved');
+
+        $this->assertFalse(is_dir($jobroot.'/contents'));
+        $this->assertTrue(is_file($jobroot.'/moved/sub/folder/readme.txt'));
+        $this->assertSame('Hello world!', file_get_contents($jobroot.'/moved/sub/folder/readme.txt'));
     }
 }
 

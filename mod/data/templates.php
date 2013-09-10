@@ -99,6 +99,8 @@ echo $OUTPUT->heading(format_string($data->name));
 $currentgroup = groups_get_activity_group($cm);
 $groupmode = groups_get_activity_groupmode($cm);
 
+echo $OUTPUT->box(format_module_intro('data', $data, $cm->id), 'generalbox', 'intro');
+
 /// Print the tabs.
 $currenttab = 'templates';
 include('tabs.php');
@@ -251,6 +253,7 @@ if ($mode != 'csstemplate' and $mode != 'jstemplate') {
             // more points to single template - not useable there
             echo '<option value="##more##">' .get_string('more', 'data'). ' - ##more##</option>';
             echo '<option value="##moreurl##">' .get_string('moreurl', 'data'). ' - ##moreurl##</option>';
+            echo '<option value="##delcheck##">' .get_string('delcheck', 'data'). ' - ##delcheck##</option>';
         }
         echo '</optgroup>';
         echo '<optgroup label="'.get_string('other', 'data').'">';

@@ -90,7 +90,7 @@ class quiz_access_manager {
      * @return array of all the installed rule class names.
      */
     protected static function get_rule_classes() {
-        return get_plugin_list_with_class('quizaccess', '', 'rule.php');
+        return core_component::get_plugin_list_with_class('quizaccess', '', 'rule.php');
     }
 
     /**
@@ -121,6 +121,24 @@ class quiz_access_manager {
             $options += $rule::get_browser_security_choices();
         }
         return $options;
+    }
+
+    /**
+     * Validate the data from any form fields added using {@link add_settings_form_fields()}.
+     * @param array $errors the errors found so far.
+     * @param array $data the submitted form data.
+     * @param array $files information about any uploaded files.
+     * @param mod_quiz_mod_form $quizform the quiz form object.
+     * @return array $errors the updated $errors array.
+     */
+    public static function validate_settings_form_fields(array $errors,
+            array $data, $files, mod_quiz_mod_form $this) {
+
+        foreach (self::get_rule_classes() as $rule) {
+            $errors = $rule::validate_settings_form_fields($errors, $data, $files, $this);
+        }
+
+        return $errors;
     }
 
     /**

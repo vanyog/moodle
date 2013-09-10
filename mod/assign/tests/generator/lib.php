@@ -65,7 +65,9 @@ class mod_assign_generator extends testing_module_generator {
             'blindmarking'                      => 0,
             'cmidnumber'                        => '',
             'attemptreopenmethod'               => 'none',
-            'maxattempts'                       => -1
+            'maxattempts'                       => -1,
+            'markingworkflow'                   => 0,
+            'markingallocation'                 => 0,
         );
 
         foreach ($defaultsettings as $name => $value) {
@@ -76,6 +78,7 @@ class mod_assign_generator extends testing_module_generator {
 
         $record->coursemodule = $this->precreate_course_module($record->course, $options);
         $id = assign_add_instance($record, null);
+        rebuild_course_cache($record->course, true);
         return $this->post_add_instance($id, $record->coursemodule);
     }
 }

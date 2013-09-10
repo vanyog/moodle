@@ -49,6 +49,12 @@ abstract class moodleform_mod extends moodleform {
     /** a flag indicating whether outcomes are being used*/
     protected $_outcomesused;
 
+    /**
+     * @var bool A flag used to indicate that this module should lock settings
+     *           based on admin settings flags in definition_after_data.
+     */
+    protected $applyadminlockedflags = false;
+
     function moodleform_mod($current, $section, $cm, $course) {
         $this->current   = $current;
         $this->_instance = $current->instance;
@@ -278,6 +284,9 @@ abstract class moodleform_mod extends moodleform {
                 }
             }
         }
+
+        // Freeze admin defaults if required (and not different from default)
+        $this->apply_admin_locked_flags();
     }
 
     // form verification
@@ -312,8 +321,11 @@ abstract class moodleform_mod extends moodleform {
         }
 
         // Completion: Don't let them choose automatic completion without turning
-        // on some conditions
-        if (array_key_exists('completion', $data) && $data['completion']==COMPLETION_TRACKING_AUTOMATIC) {
+        // on some conditions. Ignore this check when completion settings are
+        // locked, as the options are then disabled.
+        if (array_key_exists('completion', $data) &&
+                $data['completion'] == COMPLETION_TRACKING_AUTOMATIC &&
+                !empty($data['completionunlocked'])) {
             if (empty($data['completionview']) && empty($data['completionusegrade']) &&
                 !$this->completion_rule_enabled($data)) {
                 $errors['completion'] = get_string('badautocompletion', 'completion');
@@ -558,8 +570,10 @@ abstract class moodleform_mod extends moodleform {
                 $fieldcount = 1;
             }
 
-            $this->repeat_elements(array($group), $count, array(), 'conditiongraderepeats', 'conditiongradeadds', 2,
-                                   get_string('addgrades', 'condition'), true);
+            $this->repeat_elements(array($group), $count, array(
+                'conditiongradegroup[conditiongrademin]' => array('type' => PARAM_RAW),
+                'conditiongradegroup[conditiongrademax]' => array('type' => PARAM_RAW)
+                ), 'conditiongraderepeats', 'conditiongradeadds', 2, get_string('addgrades', 'condition'), true);
             $mform->addHelpButton('conditiongradegroup[0]', 'gradecondition', 'condition');
 
             // Conditions based on user fields
@@ -573,11 +587,11 @@ abstract class moodleform_mod extends moodleform {
             $grouparray[] =& $mform->createElement('select', 'conditionfield', '', $useroptions);
             $grouparray[] =& $mform->createElement('select', 'conditionfieldoperator', '', $operators);
             $grouparray[] =& $mform->createElement('text', 'conditionfieldvalue');
-            $mform->setType('conditionfieldvalue', PARAM_RAW);
             $group = $mform->createElement('group', 'conditionfieldgroup', get_string('userfield', 'condition'), $grouparray);
 
-            $this->repeat_elements(array($group), $fieldcount, array(), 'conditionfieldrepeats', 'conditionfieldadds', 2,
-                                   get_string('adduserfields', 'condition'), true);
+            $this->repeat_elements(array($group), $fieldcount, array(
+                'conditionfieldgroup[conditionfieldvalue]' => array('type' => PARAM_RAW)),
+                'conditionfieldrepeats', 'conditionfieldadds', 2, get_string('adduserfields', 'condition'), true);
             $mform->addHelpButton('conditionfieldgroup[0]', 'userfield', 'condition');
 
             // Conditions based on completion
@@ -806,7 +820,8 @@ abstract class moodleform_mod extends moodleform {
         $mform = $this->_form;
         $label = is_null($customlabel) ? get_string('moduleintro') : $customlabel;
 
-        $mform->addElement('editor', 'introeditor', $label, null, array('maxfiles'=>EDITOR_UNLIMITED_FILES, 'noclean'=>true, 'context'=>$this->context));
+        $mform->addElement('editor', 'introeditor', $label, array('rows' => 10), array('maxfiles' => EDITOR_UNLIMITED_FILES,
+            'noclean' => true, 'context' => $this->context));
         $mform->setType('introeditor', PARAM_RAW); // no XSS prevention here, users must be trusted
         if ($required) {
             $mform->addRule('introeditor', get_string('required'), 'required', null, 'client');
@@ -857,6 +872,99 @@ abstract class moodleform_mod extends moodleform {
         $mform->addGroup($buttonarray, 'buttonar', '', array(' '), false);
         $mform->setType('buttonar', PARAM_RAW);
         $mform->closeHeaderBefore('buttonar');
+    }
+
+    /**
+     * Get the list of admin settings for this module and apply any locked settings.
+     * This cannot happen in apply_admin_defaults because we do not the current values of the settings
+     * in that function because set_data has not been called yet.
+     *
+     * @return void
+     */
+    protected function apply_admin_locked_flags() {
+        global $OUTPUT;
+
+        if (!$this->applyadminlockedflags) {
+            return;
+        }
+
+        $settings = get_config($this->_modname);
+        $mform = $this->_form;
+        $lockedicon = html_writer::tag('span',
+                                       $OUTPUT->pix_icon('t/locked', get_string('locked', 'admin')),
+                                       array('class' => 'action-icon'));
+        $isupdate = !empty($this->_cm);
+
+        foreach ($settings as $name => $value) {
+            if (strpos('_', $name) !== false) {
+                continue;
+            }
+            if ($mform->elementExists($name)) {
+                $element = $mform->getElement($name);
+                $lockedsetting = $name . '_locked';
+                if (!empty($settings->$lockedsetting)) {
+                    // Always lock locked settings for new modules,
+                    // for updates, only lock them if the current value is the same as the default (or there is no current value).
+                    $value = $settings->$name;
+                    if ($isupdate && isset($this->current->$name)) {
+                        $value = $this->current->$name;
+                    }
+                    if ($value == $settings->$name) {
+                        $mform->setConstant($name, $settings->$name);
+                        $element->setLabel($element->getLabel() . $lockedicon);
+                        // Do not use hardfreeze because we need the hidden input to check dependencies.
+                        $element->freeze();
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Get the list of admin settings for this module and apply any defaults/advanced/locked settings.
+     *
+     * @param $datetimeoffsets array - If passed, this is an array of fieldnames => times that the
+     *                         default date/time value should be relative to. If not passed, all
+     *                         date/time fields are set relative to the users current midnight.
+     * @return void
+     */
+    public function apply_admin_defaults($datetimeoffsets = array()) {
+        // This flag triggers the settings to be locked in apply_admin_locked_flags().
+        $this->applyadminlockedflags = true;
+
+        $settings = get_config($this->_modname);
+        $mform = $this->_form;
+        $usermidnight = usergetmidnight(time());
+        $isupdate = !empty($this->_cm);
+
+        foreach ($settings as $name => $value) {
+            if (strpos('_', $name) !== false) {
+                continue;
+            }
+            if ($mform->elementExists($name)) {
+                $element = $mform->getElement($name);
+                if (!$isupdate) {
+                    if ($element->getType() == 'date_time_selector') {
+                        $enabledsetting = $name . '_enabled';
+                        if (empty($settings->$enabledsetting)) {
+                            $mform->setDefault($name, 0);
+                        } else {
+                            $relativetime = $usermidnight;
+                            if (isset($datetimeoffsets[$name])) {
+                                $relativetime = $datetimeoffsets[$name];
+                            }
+                            $mform->setDefault($name, $relativetime + $settings->$name);
+                        }
+                    } else {
+                        $mform->setDefault($name, $settings->$name);
+                    }
+                }
+                $advancedsetting = $name . '_adv';
+                if (!empty($settings->$advancedsetting)) {
+                    $mform->setAdvanced($name);
+                }
+            }
+        }
     }
 }
 

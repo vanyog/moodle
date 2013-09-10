@@ -1,7 +1,7 @@
-@mod_forum
+@mod @mod_forum
 Feature: A teacher can set one of 3 possible options for tracking read forum posts
   In order to ease the forum posts follow up
-  As a moodle user
+  As a user
   I need to distinct the unread posts from the read ones
 
   Background:
@@ -20,11 +20,11 @@ Feature: A teacher can set one of 3 possible options for tracking read forum pos
 
   @javascript
   Scenario: Tracking forum posts on
-    Given I add a "forum" to section "1" and I fill the form with:
+    Given I add a "Forum" to section "1" and I fill the form with:
       | Forum name | Test forum name |
       | Forum type | Standard forum for general use |
       | Description | Test forum description |
-      | Read tracking for this forum | On |
+      | Read tracking | On |
     And I add a new discussion to "Test forum name" forum with:
       | Subject | Test post subject |
       | Message | Test post message |
@@ -41,11 +41,11 @@ Feature: A teacher can set one of 3 possible options for tracking read forum pos
 
   @javascript
   Scenario: Tracking forum posts off
-    Given I add a "forum" to section "1" and I fill the form with:
+    Given I add a "Forum" to section "1" and I fill the form with:
       | Forum name | Test forum name |
       | Forum type | Standard forum for general use |
       | Description | Test forum description |
-      | Read tracking for this forum | Off |
+      | Read tracking | Off |
     And I add a new discussion to "Test forum name" forum with:
       | Subject | Test post subject |
       | Message | Test post message |
@@ -59,11 +59,11 @@ Feature: A teacher can set one of 3 possible options for tracking read forum pos
 
   @javascript
   Scenario: Tracking forum posts optional
-    Given I add a "forum" to section "1" and I fill the form with:
+    Given I add a "Forum" to section "1" and I fill the form with:
       | Forum name | Test forum name |
       | Forum type | Standard forum for general use |
       | Description | Test forum description |
-      | Read tracking for this forum | Optional |
+      | Read tracking | Optional |
     And I add a new discussion to "Test forum name" forum with:
       | Subject | Test post subject |
       | Message | Test post message |

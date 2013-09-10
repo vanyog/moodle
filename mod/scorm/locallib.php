@@ -204,6 +204,9 @@ function scorm_parse($scorm, $full) {
 
         if ($scorm->scormtype === SCORM_TYPE_LOCAL) {
             if ($packagefile = $fs->get_file($context->id, 'mod_scorm', 'package', 0, '/', $scorm->reference)) {
+                if ($packagefile->is_external_file()) { // Get zip file so we can check it is correct.
+                    $packagefile->import_external_file_contents();
+                }
                 $newhash = $packagefile->get_contenthash();
             } else {
                 $newhash = null;
@@ -270,15 +273,6 @@ function scorm_parse($scorm, $full) {
         }
         $newhash = sha1($scorm->reference);
 
-    } else if ($scorm->scormtype === SCORM_TYPE_IMSREPOSITORY and !empty($CFG->repositoryactivate) and $cfg_scorm->allowtypeimsrepository) {
-        if (!$full and $scorm->sha1hash === sha1($scorm->reference)) {
-            return;
-        }
-        require_once("$CFG->dirroot/mod/scorm/datamodels/scormlib.php");
-        if (!scorm_parse_scorm($scorm, $CFG->repository.substr($scorm->reference, 1).'/imsmanifest.xml')) {
-            $scorm->version = 'ERROR';
-        }
-        $newhash = sha1($scorm->reference);
     } else if ($scorm->scormtype === SCORM_TYPE_AICCURL  and $cfg_scorm->allowtypeexternalaicc) {
         require_once("$CFG->dirroot/mod/scorm/datamodels/aicclib.php");
         // AICC
@@ -779,60 +773,6 @@ function scorm_get_last_completed_attempt($scormid, $userid) {
     }
 }
 
-function scorm_course_format_display($user, $course) {
-    global $CFG, $DB, $PAGE, $OUTPUT;
-
-    $strupdate = get_string('update');
-    $context = context_course::instance($course->id);
-
-    echo '<div class="mod-scorm">';
-    if ($scorms = get_all_instances_in_course('scorm', $course)) {
-        // The module SCORM activity with the least id is the course
-        $scorm = current($scorms);
-        if (! $cm = get_coursemodule_from_instance('scorm', $scorm->id, $course->id)) {
-            print_error('invalidcoursemodule');
-        }
-        $contextmodule = context_module::instance($cm->id);
-        if ((has_capability('mod/scorm:skipview', $contextmodule))) {
-            scorm_simple_play($scorm, $user, $contextmodule, $cm->id);
-        }
-        $colspan = '';
-        $headertext = '<table width="100%"><tr><td class="title">'.get_string('name').': <b>'.format_string($scorm->name).'</b>';
-        if (has_capability('moodle/course:manageactivities', $context)) {
-            if ($PAGE->user_is_editing()) {
-                // Display update icon
-                $path = $CFG->wwwroot.'/course';
-                $headertext .= '<span class="commands">'.
-                        '<a title="'.$strupdate.'" href="'.$path.'/mod.php?update='.$cm->id.'&amp;sesskey='.sesskey().'">'.
-                        '<img src="'.$OUTPUT->pix_url('t/edit') . '" class="iconsmall" alt="'.$strupdate.'" /></a></span>';
-            }
-            $headertext .= '</td>';
-            // Display report link
-            $trackedusers = $DB->get_record('scorm_scoes_track', array('scormid'=>$scorm->id), 'count(distinct(userid)) as c');
-            if ($trackedusers->c > 0) {
-                $headertext .= '<td class="reportlink">'.
-                              '<a href="'.$CFG->wwwroot.'/mod/scorm/report.php?id='.$cm->id.'">'.
-                               get_string('viewallreports', 'scorm', $trackedusers->c).'</a>';
-            } else {
-                $headertext .= '<td class="reportlink">'.get_string('noreports', 'scorm');
-            }
-            $colspan = ' colspan="2"';
-        }
-        $headertext .= '</td></tr><tr><td'.$colspan.'>'.get_string('summary').':<br />'.format_module_intro('scorm', $scorm, $scorm->coursemodule).'</td></tr></table>';
-        echo $OUTPUT->box($headertext, 'generalbox boxwidthwide');
-        scorm_view_display($user, $scorm, 'view.php?id='.$course->id, $cm);
-    } else {
-        if (has_capability('moodle/course:update', $context)) {
-            // Create a new activity
-            $url = new moodle_url('/course/mod.php', array('id'=>$course->id, 'section'=>'0', 'sesskey'=>sesskey(),'add'=>'scorm'));
-            redirect($url);
-        } else {
-            echo $OUTPUT->notification('Could not find a scorm course here');
-        }
-    }
-    echo '</div>';
-}
-
 function scorm_view_display ($user, $scorm, $action, $cm) {
     global $CFG, $DB, $PAGE, $OUTPUT, $COURSE;
 
@@ -913,7 +853,7 @@ function scorm_view_display ($user, $scorm, $action, $cm) {
                       <label for="a"><?php print_string('newattempt', 'scorm') ?></label>
             <?php
         }
-        if ($COURSE->format != 'scorm' && !empty($scorm->popup)) {
+        if (!empty($scorm->popup)) {
             echo '<input type="hidden" name="display" value="popup" />'."\n";
         }
         ?>
@@ -1578,6 +1518,7 @@ function scorm_format_toc_for_treeview($user, $scorm, $scoes, $usertracks, $cmid
     $result = new stdClass();
     $result->prerequisites = true;
     $result->incomplete = true;
+    $result->toc = '';
 
     if (!$children) {
         $attemptsmade = scorm_get_attempt_count($user->id, $scorm);

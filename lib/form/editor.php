@@ -53,7 +53,7 @@ class MoodleQuickForm_editor extends HTML_QuickForm_element {
     /** @var array options provided to initalize filepicker */
     protected $_options = array('subdirs' => 0, 'maxbytes' => 0, 'maxfiles' => 0, 'changeformat' => 0,
             'areamaxbytes' => FILE_AREA_MAX_BYTES_UNLIMITED, 'context' => null, 'noclean' => 0, 'trusttext' => 0,
-            'return_types' => 7, 'collapsible' => 0, 'collapsed' => 0);
+            'return_types' => 7);
     // $_options['return_types'] = FILE_INTERNAL | FILE_EXTERNAL | FILE_REFERENCE
 
     /** @var array values for editor */
@@ -227,28 +227,10 @@ class MoodleQuickForm_editor extends HTML_QuickForm_element {
     }
 
     /**
-     * Sets help button for editor
-     *
-     * @param mixed $_helpbuttonargs arguments to create help button
-     * @param string $function name of the callback function
-     * @deprecated since Moodle 2.0. Please do not call this function any more.
-     * @todo MDL-34508 this api will be removed.
-     * @see MoodleQuickForm::addHelpButton()
+     * @deprecated since Moodle 2.0
      */
     function setHelpButton($_helpbuttonargs, $function='_helpbutton') {
-        debugging('setHelpButton() is deprecated, please use $mform->addHelpButton() instead');
-        if (!is_array($_helpbuttonargs)) {
-            $_helpbuttonargs = array($_helpbuttonargs);
-        } else {
-            $_helpbuttonargs = $_helpbuttonargs;
-        }
-        //we do this to to return html instead of printing it
-        //without having to specify it in every call to make a button.
-        if ('_helpbutton' == $function){
-            $defaultargs = array('', '', 'moodle', true, false, '', true);
-            $_helpbuttonargs = $_helpbuttonargs + $defaultargs ;
-        }
-        $this->_helpbutton=call_user_func_array($function, $_helpbuttonargs);
+        throw new coding_exception('setHelpButton() can not be used any more, please see MoodleQuickForm::addHelpButton().');
     }
 
     /**
@@ -383,17 +365,7 @@ class MoodleQuickForm_editor extends HTML_QuickForm_element {
         if (!is_null($this->getAttribute('onblur')) && !is_null($this->getAttribute('onchange'))) {
             $editorrules = ' onblur="'.htmlspecialchars($this->getAttribute('onblur')).'" onchange="'.htmlspecialchars($this->getAttribute('onchange')).'"';
         }
-        $str .= '<div><textarea id="'.$id.'" name="'.$elname.'[text]" rows="'.$rows.'" cols="'.$cols.'" spellcheck="true"';
-        $classes = array();
-        if (isset($this->_options['collapsed']) && $this->_options['collapsed']) {
-            $this->_options['collapsible'] = 1;
-            $classes[] = 'collapsed';
-        }
-        if (isset($this->_options['collapsible']) && $this->_options['collapsible']) {
-            $classes[] = 'collapsible';
-        }
-        $str .= ' class="' . implode(' ', $classes) . '"';
-        $str .= $editorrules.'>';
+        $str .= '<div><textarea id="'.$id.'" name="'.$elname.'[text]" rows="'.$rows.'" cols="'.$cols.'" spellcheck="true"'.$editorrules.'>';
         $str .= s($text);
         $str .= '</textarea></div>';
 

@@ -64,7 +64,9 @@ class backup_assign_activity_structure_step extends backup_activity_structure_st
                                                   'blindmarking',
                                                   'revealidentities',
                                                   'attemptreopenmethod',
-                                                  'maxattempts'));
+                                                  'maxattempts',
+                                                  'markingworkflow',
+                                                  'markingallocation'));
 
         $userflags = new backup_nested_element('userflags');
 
@@ -73,7 +75,9 @@ class backup_assign_activity_structure_step extends backup_activity_structure_st
                                                       'assignment',
                                                       'mailed',
                                                       'locked',
-                                                      'extensionduedate'));
+                                                      'extensionduedate',
+                                                      'workflowstate',
+                                                      'allocatedmarker'));
 
         $submissions = new backup_nested_element('submissions');
 

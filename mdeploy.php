@@ -757,7 +757,7 @@ class worker extends singleton_pattern {
                 $this->log('Package downloaded into '.$target);
             } else {
                 $this->log('cURL error ' . $this->curlerrno . ' ' . $this->curlerror);
-                $this->log('Unable to download the file');
+                $this->log('Unable to download the file from ' . $source . ' into ' . $target);
                 throw new download_file_exception('Unable to download the package');
             }
 
@@ -1053,14 +1053,16 @@ class worker extends singleton_pattern {
         curl_setopt($ch, CURLOPT_TIMEOUT, 3600);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20); // nah, moodle.org is never unavailable! :-p
         curl_setopt($ch, CURLOPT_URL, $source);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // Allow redirection, we trust in ssl.
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
 
-        $dataroot = $this->input->get_option('dataroot');
-        $cacertfile = $dataroot.'/moodleorgca.crt';
-        if (is_readable($cacertfile)) {
+        if ($cacertfile = $this->get_cacert()) {
             // Do not use CA certs provided by the operating system. Instead,
             // use this CA cert to verify the ZIP provider.
             $this->log('Using custom CA certificate '.$cacertfile);
             curl_setopt($ch, CURLOPT_CAINFO, $cacertfile);
+        } else {
+            $this->log('Using operating system CA certificates.');
         }
 
         $proxy = $this->input->get_option('proxy', false);
@@ -1107,13 +1109,45 @@ class worker extends singleton_pattern {
         $this->curlinfo = curl_getinfo($ch);
 
         if (!$result or $this->curlerrno) {
+            $this->log('Curl Error.');
             return false;
 
-        } else if (is_array($this->curlinfo) and (empty($this->curlinfo['http_code']) or $this->curlinfo['http_code'] != 200)) {
+        } else if (is_array($this->curlinfo) and (empty($this->curlinfo['http_code']) or ($this->curlinfo['http_code'] != 200))) {
+            $this->log('Curl remote error.');
+            $this->log(print_r($this->curlinfo,true));
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Get the location of ca certificates.
+     * @return string absolute file path or empty if default used
+     */
+    protected function get_cacert() {
+        $dataroot = $this->input->get_option('dataroot');
+
+        // Bundle in dataroot always wins.
+        if (is_readable($dataroot.'/moodleorgca.crt')) {
+            return realpath($dataroot.'/moodleorgca.crt');
+        }
+
+        // Next comes the default from php.ini
+        $cacert = ini_get('curl.cainfo');
+        if (!empty($cacert) and is_readable($cacert)) {
+            return realpath($cacert);
+        }
+
+        // Windows PHP does not have any certs, we need to use something.
+        if (stristr(PHP_OS, 'win') && !stristr(PHP_OS, 'darwin')) {
+            if (is_readable(__DIR__.'/lib/cacert.pem')) {
+                return realpath(__DIR__.'/lib/cacert.pem');
+            }
+        }
+
+        // Use default, this should work fine on all properly configured *nix systems.
+        return null;
     }
 
     /**

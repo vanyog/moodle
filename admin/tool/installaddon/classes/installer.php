@@ -34,7 +34,7 @@ defined('MOODLE_INTERNAL') || die();
  */
 class tool_installaddon_installer {
 
-    /** @var tool_installaddon_installfromzip */
+    /** @var tool_installaddon_installfromzip_form */
     protected $installfromzipform = null;
 
     /**
@@ -87,12 +87,9 @@ class tool_installaddon_installer {
     }
 
     /**
-     * @return tool_installaddon_installfromzip
+     * @return tool_installaddon_installfromzip_form
      */
     public function get_installfromzip_form() {
-        global $CFG;
-        require_once(dirname(__FILE__).'/installfromzip_form.php');
-
         if (!is_null($this->installfromzipform)) {
             return $this->installfromzipform;
         }
@@ -100,22 +97,22 @@ class tool_installaddon_installer {
         $action = $this->index_url();
         $customdata = array('installer' => $this);
 
-        $this->installfromzipform = new tool_installaddon_installfromzip($action, $customdata);
+        $this->installfromzipform = new tool_installaddon_installfromzip_form($action, $customdata);
 
         return $this->installfromzipform;
     }
 
     /**
-     * Saves the ZIP file from the {@link tool_installaddon_installfromzip} form
+     * Saves the ZIP file from the {@link tool_installaddon_installfromzip_form} form
      *
      * The file is saved into the given temporary location for inspection and eventual
      * deployment. The form is expected to be submitted and validated.
      *
-     * @param tool_installaddon_installfromzip $form
+     * @param tool_installaddon_installfromzip_form $form
      * @param string $targetdir full path to the directory where the ZIP should be stored to
      * @return string filename of the saved file relative to the given target
      */
-    public function save_installfromzip_file(tool_installaddon_installfromzip $form, $targetdir) {
+    public function save_installfromzip_file(tool_installaddon_installfromzip_form $form, $targetdir) {
 
         $filename = clean_param($form->get_new_filename('zipfile'), PARAM_FILE);
         $form->save_file('zipfile', $targetdir.'/'.$filename);
@@ -185,7 +182,7 @@ class tool_installaddon_installer {
     public function get_plugintype_root($plugintype) {
 
         $plugintypepath = null;
-        foreach (get_plugin_types() as $type => $fullpath) {
+        foreach (core_component::get_plugin_types() as $type => $fullpath) {
             if ($type === $plugintype) {
                 $plugintypepath = $fullpath;
                 break;
@@ -253,7 +250,7 @@ class tool_installaddon_installer {
             exit();
         }
 
-        list($plugintype, $pluginname) = normalize_component($data->component);
+        list($plugintype, $pluginname) = core_component::normalize_component($data->component);
 
         $plugintypepath = $this->get_plugintype_root($plugintype);
 
@@ -366,13 +363,6 @@ class tool_installaddon_installer {
             'ssl_verifyhost' => 2,
         );
 
-        $cacertfile = $CFG->dataroot.'/moodleorgca.crt';
-        if (is_readable($cacertfile)) {
-            // Do not use CA certs provided by the operating system. Instead,
-            // use this CA cert to verify the ZIP provider.
-            $options['cainfo'] = $cacertfile;
-        }
-
         $curl = new curl(array('proxy' => true));
 
         $result = $curl->download_one($source, null, $options);
@@ -393,6 +383,52 @@ class tool_installaddon_installer {
             throw new tool_installaddon_installer_exception('err_curl_ssl_verify', array(
                 'url' => $source, 'ssl_verify_result' => $curlinfo['ssl_verify_result']));
         }
+    }
+
+    /**
+     * Moves the given source into a new location recursively
+     *
+     * This is cross-device safe implementation to be used instead of the native rename() function.
+     * See https://bugs.php.net/bug.php?id=54097 for more details.
+     *
+     * @param string $source full path to the existing directory
+     * @param string $target full path to the new location of the directory
+     */
+    public function move_directory($source, $target) {
+
+        if (file_exists($target)) {
+            throw new tool_installaddon_installer_exception('err_folder_already_exists', array('path' => $target));
+        }
+
+        if (is_dir($source)) {
+            $handle = opendir($source);
+        } else {
+            throw new tool_installaddon_installer_exception('err_no_such_folder', array('path' => $source));
+        }
+
+        make_writable_directory($target);
+
+        while ($filename = readdir($handle)) {
+            $sourcepath = $source.'/'.$filename;
+            $targetpath = $target.'/'.$filename;
+
+            if ($filename === '.' or $filename === '..') {
+                continue;
+            }
+
+            if (is_dir($sourcepath)) {
+                $this->move_directory($sourcepath, $targetpath);
+
+            } else {
+                rename($sourcepath, $targetpath);
+            }
+        }
+
+        closedir($handle);
+
+        rmdir($source);
+
+        clearstatcache();
     }
 
     //// End of external API ///////////////////////////////////////////////////
@@ -536,13 +572,22 @@ class tool_installaddon_installer {
             return false;
         }
 
-        list($plugintype, $pluginname) = normalize_component($data->component);
+        list($plugintype, $pluginname) = core_component::normalize_component($data->component);
 
         if ($plugintype === 'core') {
             return false;
         }
 
         if ($data->component !== $plugintype.'_'.$pluginname) {
+            return false;
+        }
+
+        if (!core_component::is_valid_plugin_name($plugintype, $pluginname)) {
+            return false;
+        }
+
+        $plugintypes = core_component::get_plugin_types();
+        if (!isset($plugintypes[$plugintype])) {
             return false;
         }
 

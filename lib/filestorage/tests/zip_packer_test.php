@@ -26,7 +26,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 
-class zip_packer_testcase extends advanced_testcase {
+class core_files_zip_packer_testcase extends advanced_testcase {
     protected $testfile;
     protected $files;
 
@@ -75,12 +75,14 @@ class zip_packer_testcase extends advanced_testcase {
             __DIR__.'/fixtures/test_7zip_927.zip',
             __DIR__.'/fixtures/test_winzip_165.zip',
             __DIR__.'/fixtures/test_winrar_421.zip',
+            __DIR__.'/fixtures/test_thumbsdb.zip',
         );
 
         if (function_exists('normalizer_normalize')) {
-            // Unfortunately there is no way to standardise UTF-8 strings without INTL extension
+            // Unfortunately there is no way to standardise UTF-8 strings without INTL extension.
             $files[] = __DIR__.'/fixtures/test_infozip_3.zip';
             $files[] = __DIR__.'/fixtures/test_osx_1074.zip';
+            $files[] = __DIR__.'/fixtures/test_osx_compress.zip';
         }
 
         $packer = get_file_packer('application/zip');
@@ -89,7 +91,7 @@ class zip_packer_testcase extends advanced_testcase {
             $archivefiles = $packer->list_files($archive);
             $this->assertTrue(is_array($archivefiles), "Archive not extracted properly: ".basename($archive).' ');
             $this->assertTrue(count($this->files) === count($archivefiles) or count($this->files) === count($archivefiles) - 1); // Some zippers create empty dirs.
-            foreach($archivefiles as $file) {
+            foreach ($archivefiles as $file) {
                 if ($file->pathname === 'Žluťoučký/') {
                     // Some zippers create empty dirs.
                     continue;
@@ -98,12 +100,12 @@ class zip_packer_testcase extends advanced_testcase {
             }
         }
 
-        // Windows packer supports only DOS encoding
+        // Windows packer supports only DOS encoding.
         $archive = __DIR__.'/fixtures/test_win8_de.zip';
         $archivefiles = $packer->list_files($archive);
         $this->assertTrue(is_array($archivefiles), "Archive not extracted properly: ".basename($archive).' ');
         $this->assertEquals(2, count($archivefiles));
-        foreach($archivefiles as $file) {
+        foreach ($archivefiles as $file) {
             $this->assertTrue($file->pathname === 'Prüfung.txt' or $file->pathname === 'test.test');
         }
 
@@ -112,7 +114,7 @@ class zip_packer_testcase extends advanced_testcase {
         $archivefiles = $zip_archive->list_files();
         $this->assertTrue(is_array($archivefiles), "Archive not extracted properly: ".basename($archive).' ');
         $this->assertEquals(3, count($archivefiles));
-        foreach($archivefiles as $file) {
+        foreach ($archivefiles as $file) {
             $this->assertTrue($file->pathname === 'Žluťoučký/Koníček.txt' or $file->pathname === 'testíček.txt' or $file->pathname === 'test.test');
         }
         $zip_archive->close();
@@ -142,7 +144,7 @@ class zip_packer_testcase extends advanced_testcase {
         $archivefiles = $packer->list_files($archive);
         $this->assertTrue(is_array($archivefiles));
         $this->assertEquals(count($this->files), count($archivefiles));
-        foreach($archivefiles as $file) {
+        foreach ($archivefiles as $file) {
             $this->assertArrayHasKey($file->pathname, $this->files);
         }
 
@@ -199,7 +201,7 @@ class zip_packer_testcase extends advanced_testcase {
         $archivefiles = $result->list_files($packer);
         $this->assertTrue(is_array($archivefiles));
         $this->assertEquals(count($this->files), count($archivefiles));
-        foreach($archivefiles as $file) {
+        foreach ($archivefiles as $file) {
             $this->assertArrayHasKey($file->pathname, $this->files);
         }
     }
@@ -227,7 +229,7 @@ class zip_packer_testcase extends advanced_testcase {
         $result = $packer->extract_to_pathname($archive, $target);
         $this->assertTrue(is_array($result));
         $this->assertEquals(count($this->files), count($result));
-        foreach($this->files as $file=>$unused) {
+        foreach ($this->files as $file => $unused) {
             $this->assertTrue($result[$file]);
             $this->assertFileExists($target.$file);
             $this->assertSame($testcontent, file_get_contents($target.$file));
@@ -238,7 +240,7 @@ class zip_packer_testcase extends advanced_testcase {
         $result = $packer->extract_to_pathname($archive, $target);
         $this->assertTrue(is_array($result));
         $this->assertEquals(count($this->files), count($result));
-        foreach($this->files as $file=>$unused) {
+        foreach ($this->files as $file => $unused) {
             $this->assertTrue($result[$file]);
             $this->assertFileExists($target.$file);
             $this->assertSame($testcontent, file_get_contents($target.$file));
@@ -273,12 +275,12 @@ class zip_packer_testcase extends advanced_testcase {
         $this->assertTrue(is_array($result));
         $this->assertEquals(count($willbeextracted), count($result));
 
-        foreach($willbeextracted as $file) {
+        foreach ($willbeextracted as $file) {
             $this->assertTrue($result[$file]);
             $this->assertFileExists($target.$file);
             $this->assertSame($testcontent, file_get_contents($target.$file));
         }
-        foreach($donotextract as $file) {
+        foreach ($donotextract as $file) {
             $this->assertFalse(isset($result[$file]));
             $this->assertFileNotExists($target.$file);
         }
@@ -304,7 +306,7 @@ class zip_packer_testcase extends advanced_testcase {
         $result = $packer->extract_to_storage($archive, $context->id, 'phpunit', 'target', 0, '/');
         $this->assertTrue(is_array($result));
         $this->assertEquals(count($this->files), count($result));
-        foreach($this->files as $file=>$unused) {
+        foreach ($this->files as $file => $unused) {
             $this->assertTrue($result[$file]);
             $stored_file = $fs->get_file_by_hash(sha1("/$context->id/phpunit/target/0/$file"));
             $this->assertInstanceOf('stored_file', $stored_file);
@@ -316,7 +318,7 @@ class zip_packer_testcase extends advanced_testcase {
         $result = $packer->extract_to_storage($archive, $context->id, 'phpunit', 'target', 0, '/');
         $this->assertTrue(is_array($result));
         $this->assertEquals(count($this->files), count($result));
-        foreach($this->files as $file=>$unused) {
+        foreach ($this->files as $file => $unused) {
             $this->assertTrue($result[$file]);
             $stored_file = $fs->get_file_by_hash(sha1("/$context->id/phpunit/target/0/$file"));
             $this->assertInstanceOf('stored_file', $stored_file);

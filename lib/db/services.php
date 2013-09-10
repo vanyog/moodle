@@ -35,6 +35,71 @@
 
 $functions = array(
 
+    // Cohort related functions.
+
+    'core_cohort_create_cohorts' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'create_cohorts',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Creates new cohorts.',
+        'type'        => 'write',
+        'capabilities'=> 'moodle/cohort:manage',
+    ),
+
+    'core_cohort_delete_cohorts' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'delete_cohorts',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Deletes all specified cohorts.',
+        'type'        => 'delete',
+        'capabilities'=> 'moodle/cohort:manage',
+    ),
+
+    'core_cohort_get_cohorts' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'get_cohorts',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Returns cohort details.',
+        'type'        => 'read',
+        'capabilities'=> 'moodle/cohort:view',
+    ),
+
+    'core_cohort_update_cohorts' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'update_cohorts',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Updates existing cohorts.',
+        'type'        => 'write',
+        'capabilities'=> 'moodle/cohort:manage',
+    ),
+
+    'core_cohort_add_cohort_members' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'add_cohort_members',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Adds cohort members.',
+        'type'        => 'write',
+        'capabilities'=> 'moodle/cohort:assign',
+    ),
+
+    'core_cohort_delete_cohort_members' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'delete_cohort_members',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Deletes cohort members.',
+        'type'        => 'delete',
+        'capabilities'=> 'moodle/cohort:assign',
+    ),
+
+    'core_cohort_get_cohort_members' => array(
+        'classname'   => 'core_cohort_external',
+        'methodname'  => 'get_cohort_members',
+        'classpath'   => 'cohort/externallib.php',
+        'description' => 'Returns cohort members.',
+        'type'        => 'read',
+        'capabilities'=> 'moodle/cohort:view',
+    ),
+
     // === group related functions ===
 
     'moodle_group_create_groups' => array(
@@ -420,6 +485,14 @@ $functions = array(
         'capabilities'=> 'moodle/course:viewparticipants',
     ),
 
+    'core_enrol_get_course_enrolment_methods' => array(
+        'classname'   => 'core_enrol_external',
+        'methodname'  => 'get_course_enrolment_methods',
+        'classpath'   => 'enrol/externallib.php',
+        'description' => 'Get the list of course enrolment methods',
+        'type'        => 'read',
+    ),
+
     // === Role related functions ===
 
     'moodle_role_assign' => array(
@@ -709,13 +782,29 @@ $functions = array(
         'capabilities'=> 'moodle/notes:manage',
     ),
 
-    // === grade related functions ===
+    // === grading related functions ===
+
+    'core_grading_get_definitions' => array(
+        'classname'   => 'core_grading_external',
+        'methodname'  => 'get_definitions',
+        'classpath'   => 'grade/externallib.php',
+        'description' => 'Get grading definitions',
+        'type'        => 'read'
+    ),
 
     'core_grade_get_definitions' => array(
         'classname'   => 'core_grade_external',
         'methodname'  => 'get_definitions',
         'classpath'   => 'grade/externallib.php',
-        'description' => 'Get grading definitions',
+        'description' => 'DEPRECATED: this deprecated function will be removed in a future version. This function has been renamed as core_grading_get_definitions()',
+        'type'        => 'read'
+    ),
+
+    'core_grading_get_gradingform_instances' => array(
+        'classname'   => 'core_grading_external',
+        'methodname'  => 'get_gradingform_instances',
+        'classpath'   => 'grade/externallib.php',
+        'description' => 'Get grading form instances',
         'type'        => 'read'
     ),
 
@@ -810,6 +899,7 @@ $services = array(
         'enabled' => 0,
         'restrictedusers' => 0,
         'shortname' => MOODLE_OFFICIAL_MOBILE_SERVICE,
-        'downloadfiles' => 1
+        'downloadfiles' => 1,
+        'uploadfiles' => 1
     ),
 );

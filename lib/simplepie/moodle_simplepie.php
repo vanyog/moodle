@@ -52,8 +52,9 @@ class moodle_simplepie extends SimplePie {
      * with Moodle defaults.
      *
      * @param string $feedurl optional URL of the feed
+     * @param int $timeout how many seconds requests should wait for server response
      */
-    public function __construct($feedurl = null) {
+    public function __construct($feedurl = null, $timeout = 2) {
         $cachedir = moodle_simplepie::get_cache_directory();
         check_dir_exists($cachedir);
 
@@ -70,7 +71,7 @@ class moodle_simplepie extends SimplePie {
         $this->set_output_encoding('UTF-8');
 
         // default to a short timeout as most operations will be interactive
-        $this->set_timeout(2);
+        $this->set_timeout($timeout);
 
         // 1 hour default cache
         $this->set_cache_location($cachedir);
@@ -153,7 +154,7 @@ class moodle_simplepie_file extends SimplePie_File {
 
         if ($parser->parse()) {
             $this->headers = $parser->headers;
-            $this->body = $parser->body;
+            $this->body = trim($parser->body);
             $this->status_code = $parser->status_code;
 
 
@@ -197,6 +198,7 @@ class moodle_simplepie_sanitize extends SimplePie_Sanitize {
             if ($absolute !== false) {
                 $data = $absolute;
             }
+            $data = clean_param($data, PARAM_URL);
         }
 
         if ($type & (SIMPLEPIE_CONSTRUCT_TEXT | SIMPLEPIE_CONSTRUCT_IRI)) {
@@ -213,7 +215,7 @@ class moodle_simplepie_sanitize extends SimplePie_Sanitize {
         }
 
         if ($this->output_encoding !== 'UTF-8') {
-            textlib::convert($data, 'UTF-8', $this->output_encoding);
+            core_text::convert($data, 'UTF-8', $this->output_encoding);
         }
 
         return $data;

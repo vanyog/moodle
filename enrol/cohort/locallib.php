@@ -184,6 +184,7 @@ function enrol_cohort_sync(progress_trace $trace, $courseid = NULL) {
     $sql = "SELECT cm.userid, e.id AS enrolid, ue.status
               FROM {cohort_members} cm
               JOIN {enrol} e ON (e.customint1 = cm.cohortid AND e.enrol = 'cohort' $onecourse)
+              JOIN {user} u ON (u.id = cm.userid AND u.deleted = 0)
          LEFT JOIN {user_enrolments} ue ON (ue.enrolid = e.id AND ue.userid = cm.userid)
              WHERE ue.id IS NULL OR ue.status = :suspended";
     $params = array();
@@ -244,6 +245,7 @@ function enrol_cohort_sync(progress_trace $trace, $courseid = NULL) {
               JOIN {enrol} e ON (e.id = ue.enrolid AND e.enrol = 'cohort' AND e.status = :statusenabled $onecourse)
               JOIN {role} r ON (r.id = e.roleid)
               JOIN {context} c ON (c.instanceid = e.courseid AND c.contextlevel = :coursecontext)
+              JOIN {user} u ON (u.id = ue.userid AND u.deleted = 0)
          LEFT JOIN {role_assignments} ra ON (ra.contextid = c.id AND ra.userid = ue.userid AND ra.itemid = e.id AND ra.component = 'enrol_cohort' AND e.roleid = ra.roleid)
              WHERE ue.status = :useractive AND ra.id IS NULL";
     $params = array();
@@ -307,6 +309,7 @@ function enrol_cohort_sync(progress_trace $trace, $courseid = NULL) {
               FROM {user_enrolments} ue
               JOIN {enrol} e ON (e.id = ue.enrolid AND e.enrol = 'cohort' $onecourse)
               JOIN {groups} g ON (g.courseid = e.courseid AND g.id = e.customint2)
+              JOIN {user} u ON (u.id = ue.userid AND u.deleted = 0)
          LEFT JOIN {groups_members} gm ON (gm.groupid = g.id AND gm.userid = ue.userid)
              WHERE gm.id IS NULL";
     $params = array();
@@ -391,7 +394,7 @@ function enrol_cohort_get_cohorts(course_enrolment_manager $manager) {
             $enrolled[] = $instance->customint1;
         }
     }
-    list($sqlparents, $params) = $DB->get_in_or_equal(get_parent_contexts($context));
+    list($sqlparents, $params) = $DB->get_in_or_equal($context->get_parent_context_ids());
     $sql = "SELECT id, name, idnumber, contextid
               FROM {cohort}
              WHERE contextid $sqlparents

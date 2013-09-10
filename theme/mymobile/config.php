@@ -17,8 +17,7 @@
 /**
  * Config file for mymobile theme
  *
- * @package    theme
- * @subpackage mymobile
+ * @package    theme_mymobile
  * @copyright  John Stabinger
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -34,8 +33,8 @@ $THEME->parents = array(
 
 // Set the stylesheets that we want to include for this theme
 $THEME->sheets = array(
-    'jmobile11',
-    'jmobile11_rtl',
+    'jmobile131',
+    'jmobile131_rtl',
     'core',
     'media'
 );
@@ -143,10 +142,11 @@ $THEME->layouts = array(
 );
 
 // Get whether to show blocks and use appropriate pagelayout
-// this is necessary for block JS errors and other block problems
-$thisdevice = get_device_type();
-if ($thisdevice == "default" || $thisdevice == "tablet" || optional_param('mymobile_blocks', false, PARAM_BOOL)) {
-    // These are layouts with blocks
+// this is necessary for block JS errors and other block problems.
+$thisdevice = core_useragent::get_device_type();
+if ($thisdevice === core_useragent::DEVICETYPE_DEFAULT || $thisdevice === core_useragent::DEVICETYPE_TABLET ||
+    optional_param('mymobile_blocks', false, PARAM_BOOL)) {
+    // These are layouts with blocks.
     $blocklayouts = array('course', 'incourse', 'frontpage', 'mydashboard', 'mypublic');
     foreach ($blocklayouts as $layout) {
         $THEME->layouts[$layout]['regions'] = array('myblocks');

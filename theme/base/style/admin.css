@@ -8,6 +8,7 @@
 
 .path-admin #assignrole {width: 60%;margin-left: auto;margin-right: auto;}
 .path-admin .admintable .leftalign {text-align: left;}
+.dir-rtl.path-admin .admintable .leftalign {text-align: right;}
 .path-admin .admintable .centeralign {text-align: center;}
 
 .path-admin .admintable.environmenttable .name,
@@ -111,7 +112,10 @@
 #page-admin-qtypes #qtypes img { padding-right: .45em; vertical-align: text-bottom; }
 
 .path-admin-roles .buttons .singlebutton,
-#page-admin-course-manage {display: inline;padding: 5px;}
+#page-admin-course-manage .buttons {
+  display: inline;
+  padding: 5px;
+}
 
 .path-admin-roles .capabilitysearchui {text-align: left;margin-left: auto;margin-right: auto;}
 #page-admin-roles-define .topfields {margin: 1em 0 2em;}
@@ -251,6 +255,12 @@
 .admin_colourpicker .previewcolour {border:1px solid #000;margin-left:301px;}
 .admin_colourpicker .currentcolour {border:1px solid #000;margin-left:301px;border-top-width:0;}
 
+/* Styles for flags on admin settings */
+.adminsettingsflags { float: right; }
+.dir-rtl .adminsettingsflags { float: left; }
+.adminsettingsflags label { margin-right: 7px; }
+.dir-rtl .adminsettingsflags label { margin-left: 7px; }
+
 /** Overide for RTL layout **/
 .dir-rtl #adminsettings .form-item  .form-setting,
 .dir-rtl #adminsettings .form-item  .form-label,
@@ -292,7 +302,11 @@
 #page-admin-plugins #plugins-control-panel {margin-left:auto; margin-right:auto;}
 #page-admin-plugins #plugins-control-panel .pluginname .pluginicon {width:16px;}
 #page-admin-plugins #plugins-control-panel .pluginname .componentname {font-size:0.8em;color:#999;margin-left:26px;}
-#page-admin-plugins #plugins-control-panel .missingfromdisk .pluginname {background-color:#ffd3d9;}
+#page-admin-plugins #plugins-control-panel .statusmsg {background-color:#eee;padding:3px;-webkit-border-radius: 5px;-moz-border-radius: 5px;border-radius: 5px;}
+#page-admin-plugins #plugins-control-panel .status-missing .pluginname {background-color:#ffd3d9;}
+#page-admin-plugins #plugins-control-panel .status-missing .statusmsg {color:#600;}
+#page-admin-plugins #plugins-control-panel .status-new .pluginname {background-color:#e7f1c3;}
+#page-admin-plugins #plugins-control-panel .status-new .statusmsg {color:#060;}
 #page-admin-plugins #plugins-control-panel .disabled .availability {background-color:#eee;}
 #page-admin-plugins #plugins-control-panel .extension .source {background-color:#f3f2aa;}
 #page-admin-plugins #plugins-control-panel .msg td {text-align:center;}
@@ -330,7 +344,8 @@
 #core-cache-mode-mappings table {margin:0 auto;}
 #core-cache-store-summaries .default-store td {color:#333;font-style: italic;}
 #core-cache-rescan-definitions,
-#core-cache-mode-mappings .edit-link {margin-top:0.5em;text-align:center;}
+#core-cache-mode-mappings .edit-link,
+#core-cache-lock-summary .new-instance {margin-top:0.5em;text-align:center;}
 #core-cache-store-summaries .store-requires-attention {background-color:#ffd3d9;}
 
 .tinymcesubplugins img.icon { padding-top: 0; padding-bottom: 0; }

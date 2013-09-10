@@ -140,12 +140,13 @@ class core_admin_renderer extends plugin_renderer_base {
     public function upgrade_confirm_page($strnewversion, $maturity) {
         $output = '';
 
-        $continueurl = new moodle_url('index.php', array('confirmupgrade' => 1));
-        $cancelurl = new moodle_url('index.php');
+        $continueurl = new moodle_url('/admin/index.php', array('confirmupgrade' => 1));
+        $continue = new single_button($continueurl, get_string('continue'), 'get');
+        $cancelurl = new moodle_url('/admin/index.php');
 
         $output .= $this->header();
         $output .= $this->maturity_warning($maturity);
-        $output .= $this->confirm(get_string('upgradesure', 'admin', $strnewversion), $continueurl, $cancelurl);
+        $output .= $this->confirm(get_string('upgradesure', 'admin', $strnewversion), $continue, $cancelurl);
         $output .= $this->footer();
 
         return $output;
@@ -279,10 +280,10 @@ class core_admin_renderer extends plugin_renderer_base {
             $output .= $this->output->container(get_string('updatepluginconfirmexternal', 'core_plugin', $repotype), 'updatepluginconfirmexternal');
         }
 
-        $widget = $deployer->make_execution_widget($data['updateinfo']);
+        $widget = $deployer->make_execution_widget($data['updateinfo'], $data['returnurl']);
         $output .= $this->output->render($widget);
 
-        $output .= $this->output->single_button($data['returnurl'], get_string('cancel', 'core'), 'get');
+        $output .= $this->output->single_button($data['callerurl'], get_string('cancel', 'core'), 'get');
 
         $output .= $this->container_end();
         $output .= $this->footer();
@@ -375,7 +376,7 @@ class core_admin_renderer extends plugin_renderer_base {
      * Display a page to confirm the plugin uninstallation.
      *
      * @param plugin_manager $pluginman
-     * @param plugin_info $pluginfo
+     * @param plugininfo_base $pluginfo
      * @param moodle_url $continueurl URL to continue after confirmation
      * @return string
      */
@@ -384,10 +385,14 @@ class core_admin_renderer extends plugin_renderer_base {
 
         $pluginname = $pluginman->plugin_name($pluginfo->component);
 
+        $confirm = '<p>' . get_string('uninstallconfirm', 'core_plugin', array('name' => $pluginname)) . '</p>';
+        if ($extraconfirm = $pluginfo->get_uninstall_extra_warning()) {
+            $confirm .= $extraconfirm;
+        }
+
         $output .= $this->output->header();
         $output .= $this->output->heading(get_string('uninstalling', 'core_plugin', array('name' => $pluginname)));
-        $output .= $this->output->confirm(get_string('uninstallconfirm', 'core_plugin', array('name' => $pluginname)),
-            $continueurl, $this->page->url);
+        $output .= $this->output->confirm($confirm, $continueurl, $this->page->url);
         $output .= $this->output->footer();
 
         return $output;
@@ -397,7 +402,7 @@ class core_admin_renderer extends plugin_renderer_base {
      * Display a page with results of plugin uninstallation and offer removal of plugin files.
      *
      * @param plugin_manager $pluginman
-     * @param plugin_info $pluginfo
+     * @param plugininfo_base $pluginfo
      * @param progress_trace_buffer $progress
      * @param moodle_url $continueurl URL to continue to remove the plugin folder
      * @return string
@@ -407,6 +412,10 @@ class core_admin_renderer extends plugin_renderer_base {
         $output = '';
 
         $pluginname = $pluginman->plugin_name($pluginfo->component);
+
+        // Do not show navigation here, they must click one of the buttons.
+        $this->page->set_pagelayout('maintenance');
+        $this->page->set_cacheable(false);
 
         $output .= $this->output->header();
         $output .= $this->output->heading(get_string('uninstalling', 'core_plugin', array('name' => $pluginname)));
@@ -421,7 +430,8 @@ class core_admin_renderer extends plugin_renderer_base {
                 'uninstalldeleteconfirmexternal');
         }
 
-        $output .= $this->output->confirm($confirm, $continueurl, $this->page->url);
+        // After any uninstall we must execute full upgrade to finish the cleanup!
+        $output .= $this->output->confirm($confirm, $continueurl, new moodle_url('/admin/index.php'));
         $output .= $this->output->footer();
 
         return $output;
@@ -431,14 +441,14 @@ class core_admin_renderer extends plugin_renderer_base {
      * Display a page with results of plugin uninstallation and inform about the need to remove plugin files manually.
      *
      * @param plugin_manager $pluginman
-     * @param plugin_info $pluginfo
+     * @param plugininfo_base $pluginfo
      * @param progress_trace_buffer $progress
      * @return string
      */
     public function plugin_uninstall_results_page(plugin_manager $pluginman, plugininfo_base $pluginfo, progress_trace_buffer $progress) {
         $output = '';
 
-        $pluginname = $pluginman->plugin_name($pluginfo->component);
+        $pluginname = $pluginfo->component;
 
         $output .= $this->output->header();
         $output .= $this->output->heading(get_string('uninstalling', 'core_plugin', array('name' => $pluginname)));
@@ -447,7 +457,7 @@ class core_admin_renderer extends plugin_renderer_base {
 
         $output .= $this->output->box(get_string('uninstalldelete', 'core_plugin',
             array('name' => $pluginname, 'rootdir' => $pluginfo->rootdir)), 'generalbox uninstalldelete');
-        $output .= $this->output->continue_button($this->page->url);
+        $output .= $this->output->continue_button(new moodle_url('/admin/index.php'));
         $output .= $this->output->footer();
 
         return $output;
@@ -681,7 +691,8 @@ class core_admin_renderer extends plugin_renderer_base {
         }
 
         $updateinfo .= $this->container_start('checkforupdates');
-        $updateinfo .= $this->single_button(new moodle_url($this->page->url, array('fetchupdates' => 1)), get_string('checkforupdates', 'core_plugin'));
+        $fetchurl = new moodle_url('/admin/index.php', array('fetchupdates' => 1, 'sesskey' => sesskey(), 'cache' => 1));
+        $updateinfo .= $this->single_button($fetchurl, get_string('checkforupdates', 'core_plugin'));
         if ($fetch) {
             $updateinfo .= $this->container(get_string('checkforupdateslast', 'core_plugin',
                 userdate($fetch, get_string('strftimedatetime', 'core_langconfig'))));
@@ -703,7 +714,7 @@ class core_admin_renderer extends plugin_renderer_base {
 
         if (!$registered) {
 
-            $registerbutton = $this->single_button(new moodle_url('registration/register.php',
+            $registerbutton = $this->single_button(new moodle_url('/admin/registration/register.php',
                     array('huburl' =>  HUB_MOODLEORGHUBURL, 'hubname' => 'Moodle.org')),
                     get_string('register', 'admin'));
 
@@ -896,7 +907,7 @@ class core_admin_renderer extends plugin_renderer_base {
                         continue;
                     }
 
-                } else if ($isstandard and $statusisboring and $dependenciesok and empty($availableupdates)) {
+                } else if ($statusisboring and $dependenciesok and empty($availableupdates)) {
                     // no change is going to happen to the plugin - display it only
                     // if the user wants to see the full list
                     if (empty($options['full'])) {
@@ -1000,9 +1011,11 @@ class core_admin_renderer extends plugin_renderer_base {
             } else {
                 $str = 'otherplugin';
             }
+            $componenturl = new moodle_url('https://moodle.org/plugins/view.php?plugin='.$component);
+            $componenturl = html_writer::tag('a', $component, array('href' => $componenturl->out()));
             $requires[] = html_writer::tag('li',
                     get_string($str, 'core_plugin',
-                            array('component' => $component, 'version' => $requiredversion)),
+                            array('component' => $componenturl, 'version' => $requiredversion)),
                     array('class' => $class));
         }
 
@@ -1179,9 +1192,12 @@ class core_admin_renderer extends plugin_renderer_base {
                 } else {
                     $icon = $this->output->pix_icon('spacer', '', 'moodle', array('class' => 'icon pluginicon noicon'));
                 }
-                if ($plugin->get_status() === plugin_manager::PLUGIN_STATUS_MISSING) {
-                    $msg = html_writer::tag('span', get_string('status_missing', 'core_plugin'), array('class' => 'notifyproblem'));
-                    $row->attributes['class'] .= ' missingfromdisk';
+                $status = $plugin->get_status();
+                $row->attributes['class'] .= ' status-'.$status;
+                if ($status === plugin_manager::PLUGIN_STATUS_MISSING) {
+                    $msg = html_writer::tag('span', get_string('status_missing', 'core_plugin'), array('class' => 'statusmsg'));
+                } else if ($status === plugin_manager::PLUGIN_STATUS_NEW) {
+                    $msg = html_writer::tag('span', get_string('status_new', 'core_plugin'), array('class' => 'statusmsg'));
                 } else {
                     $msg = '';
                 }

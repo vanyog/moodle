@@ -90,6 +90,8 @@ class assign_upgrade_manager {
         $data->grade = $oldassignment->grade;
         $data->submissiondrafts = $oldassignment->resubmit;
         $data->requiresubmissionstatement = 0;
+        $data->markingworkflow = 0;
+        $data->markingallocation = 0;
         $data->cutoffdate = 0;
         // New way to specify no late submissions.
         if ($oldassignment->preventlate) {
@@ -405,7 +407,7 @@ class assign_upgrade_manager {
             return false;
         }
 
-        $newcm->section = course_add_cm_to_section($newcm->course, $newcm->id, $section->section);
+        $newcm->section = course_add_cm_to_section($newcm->course, $newcm->id, $section->section, $cm->id);
 
         // Make sure visibility is set correctly (in particular in calendar).
         // Note: Allow them to set it even without moodle/course:activityvisibility.

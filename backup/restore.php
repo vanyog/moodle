@@ -17,6 +17,10 @@ $PAGE->set_pagelayout('standard');
 require_login($course, null, $cm);
 require_capability('moodle/restore:restorecourse', $context);
 
+// Restore of large courses requires extra memory. Use the amount configured
+// in admin settings.
+raise_memory_limit(MEMORY_EXTRA);
+
 if ($stage & restore_ui::STAGE_CONFIRM + restore_ui::STAGE_DESTINATION) {
     $restore = restore_ui::engage_independent_stage($stage, $contextid);
 } else {
@@ -40,18 +44,6 @@ if ($stage & restore_ui::STAGE_CONFIRM + restore_ui::STAGE_DESTINATION) {
 }
 
 $outcome = $restore->process();
-if (!$restore->is_independent()) {
-    if ($restore->get_stage() == restore_ui::STAGE_PROCESS && !$restore->requires_substage()) {
-        try {
-            $restore->execute();
-        } catch(Exception $e) {
-            $restore->cleanup();
-            throw $e;
-        }
-    } else {
-        $restore->save_controller();
-    }
-}
 $heading = $course->fullname;
 
 $PAGE->set_title($heading.': '.$restore->get_stage_name());
@@ -63,6 +55,26 @@ echo $OUTPUT->header();
 if (!$restore->is_independent() && $restore->enforce_changed_dependencies()) {
     debugging('Your settings have been altered due to unmet dependencies', DEBUG_DEVELOPER);
 }
+
+if (!$restore->is_independent()) {
+    if ($restore->get_stage() == restore_ui::STAGE_PROCESS && !$restore->requires_substage()) {
+        try {
+            // Display an extra progress bar so that we can show the progress first.
+            echo html_writer::start_div('', array('id' => 'executionprogress'));
+            echo $renderer->progress_bar($restore->get_progress_bar());
+            $restore->get_controller()->set_progress(new core_backup_display_progress());
+            $restore->execute();
+            echo html_writer::end_div();
+            echo html_writer::script('document.getElementById("executionprogress").style.display = "none";');
+        } catch(Exception $e) {
+            $restore->cleanup();
+            throw $e;
+        }
+    } else {
+        $restore->save_controller();
+    }
+}
+
 echo $renderer->progress_bar($restore->get_progress_bar());
 echo $restore->display($renderer);
 $restore->destroy();

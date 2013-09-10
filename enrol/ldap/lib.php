@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -20,8 +19,7 @@
  *
  * This plugin synchronises enrolment and roles with a LDAP server.
  *
- * @package    enrol
- * @subpackage ldap
+ * @package    enrol_ldap
  * @author     Iñaki Arenaza - based on code by Martin Dougiamas, Martin Langhoff and others
  * @copyright  1999 onwards Martin Dougiamas {@link http://moodle.com}
  * @copyright  2010 Iñaki Arenaza <iarenaza@eps.mondragon.edu>
@@ -329,7 +327,7 @@ class enrol_ldap_plugin extends enrol_plugin {
                 $trace->finished();
                 return;
             }
-            $oneidnumber = ldap_filter_addslashes(textlib::convert($course->idnumber, 'utf-8', $this->get_config('ldapencoding')));
+            $oneidnumber = ldap_filter_addslashes(core_text::convert($course->idnumber, 'utf-8', $this->get_config('ldapencoding')));
         }
 
         // Get enrolments for each type of role.
@@ -691,7 +689,7 @@ class enrol_ldap_plugin extends enrol_plugin {
             return array();
         }
 
-        $extmemberuid = textlib::convert($memberuid, 'utf-8', $this->get_config('ldapencoding'));
+        $extmemberuid = core_text::convert($memberuid, 'utf-8', $this->get_config('ldapencoding'));
 
         if($this->get_config('memberattribute_isdn')) {
             if (!($extmemberuid = $this->ldap_find_userdn($extmemberuid))) {
@@ -990,6 +988,12 @@ class enrol_ldap_plugin extends enrol_plugin {
             $course->summary = '';
         } else {
             $course->summary = $course_ext[$this->get_config('course_summary')][0];
+        }
+
+        // Check if the shortname already exists if it does - skip course creation.
+        if ($DB->record_exists('course', array('shortname' => $course->shortname))) {
+            $trace->output(get_string('duplicateshortname', 'enrol_ldap', $course));
+            return false;
         }
 
         $newcourse = create_course($course);

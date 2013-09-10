@@ -259,12 +259,7 @@ if ($result->prerequisites) {
                                                        $scorm->width, $scorm->height)));
         ?>
             <noscript>
-            <!--[if IE]>
                 <iframe id="main" class="scoframe" name="main" src="loadSCO.php?id=<?php echo $cm->id.$scoidstr.$modestr; ?>"></iframe>
-            <![endif]-->
-            <!--[if !IE]>
-                <object id="main" class="scoframe" type="text/html" data="loadSCO.php?id=<?php echo $cm->id.$scoidstr.$modestr; ?>"></object>
-            <![endif]-->
             </noscript>
         <?php
     }
@@ -281,7 +276,12 @@ if (empty($scorm->popup) || $displaymode == 'popup') {
     if (!isset($result->toctitle)) {
         $result->toctitle = get_string('toc', 'scorm');
     }
-    $PAGE->requires->js_init_call('M.mod_scorm.init', array($scorm->hidenav, $scorm->hidetoc, $result->toctitle, $name, $sco->id, $adlnav));
+    $jsmodule = array(
+        'name' => 'mod_scorm',
+        'fullpath' => '/mod/scorm/module.js',
+        'requires' => array('json'),
+    );
+    $PAGE->requires->js_init_call('M.mod_scorm.init', array($scorm->hidenav, $scorm->hidetoc, $result->toctitle, $name, $sco->id, $adlnav), false, $jsmodule);
 }
 if (!empty($forcejs)) {
     echo $OUTPUT->box(get_string("forcejavascriptmessage", "scorm"), "generalbox boxaligncenter forcejavascriptmessage");

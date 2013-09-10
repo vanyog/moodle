@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -16,10 +15,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Strings for component 'enrol_ldap', language 'en', branch 'MOODLE_20_STABLE'
+ * Strings for component 'enrol_ldap', language 'en'.
  *
- * @package    enrol
- * @subpackage ldap
+ * @package    enrol_ldap
  * @copyright  1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @copyright  2010 Iñaki Arenaza <iarenaza@eps.mondragon.edu>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -55,6 +53,7 @@ $string['course_summary_key'] = 'Summary';
 $string['createcourseextid'] = 'CREATE User enrolled to a nonexistant course \'{$a->courseextid}\'';
 $string['createnotcourseextid'] = 'User enrolled to a nonexistant course \'{$a->courseextid}\'';
 $string['creatingcourse'] =  'Creating course \'{$a}\'...';
+$string['duplicateshortname'] = "Course creation failed. Duplicate short name. Skipping course with idnumber '{\$a->idnumber}'...";
 $string['editlock'] = 'Lock value';
 $string['emptyenrolment'] = "Empty enrolment for role '{\$a->role_shortname}' in course '{\$a->course_shortname}'\n";
 $string['enrolname'] = 'LDAP';

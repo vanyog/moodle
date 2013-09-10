@@ -66,8 +66,6 @@ abstract class moodle_database {
     protected $database_manager;
     /** @var moodle_temptables temptables manager to provide cross-db support for temp tables. */
     protected $temptables;
-    /** @var array Cache of column info. */
-    protected $columns = array(); // I wish we had a shared memory cache for this :-(
     /** @var array Cache of table info. */
     protected $tables  = null;
 
@@ -187,6 +185,15 @@ abstract class moodle_database {
     }
 
     /**
+     * Returns the database vendor.
+     * Note: can be used before connect()
+     * @return string The db vendor name, usually the same as db family name.
+     */
+    public function get_dbvendor() {
+        return $this->get_dbfamily();
+    }
+
+    /**
      * Returns the database family type. (This sort of describes the SQL 'dialect')
      * Note: can be used before connect()
      * @return string The db family name (mysql, postgres, mssql, oracle, etc.)
@@ -224,9 +231,13 @@ abstract class moodle_database {
     /**
      * Returns the localised database description
      * Note: can be used before connect()
+     * @deprecated since 2.6
      * @return string
      */
-    public abstract function get_configuration_hints();
+    public function get_configuration_hints() {
+        debugging('$DB->get_configuration_hints() method is deprecated, use $DB->get_configuration_help() instead');
+        return $this->get_configuration_help();
+    }
 
     /**
      * Returns the db related part of config.php
@@ -356,7 +367,6 @@ abstract class moodle_database {
             $this->database_manager->dispose();
             $this->database_manager = null;
         }
-        $this->columns = array();
         $this->tables  = null;
     }
 
@@ -945,7 +955,6 @@ abstract class moodle_database {
      * @return void
      */
     public function reset_caches() {
-        $this->columns = array();
         $this->tables  = null;
         // Purge MUC as well
         $identifiers = array('dbfamily' => $this->get_dbfamily(), 'settings' => $this->get_settings_hash());
@@ -2214,6 +2223,10 @@ abstract class moodle_database {
             $this->commit_transaction();
         }
         array_pop($this->transactions);
+
+        if (empty($this->transactions)) {
+            \core\event\manager::database_transaction_commited();
+        }
     }
 
     /**
@@ -2259,6 +2272,7 @@ abstract class moodle_database {
         if (empty($this->transactions)) {
             // finally top most level rolled back
             $this->force_rollback = false;
+            \core\event\manager::database_transaction_rolledback();
         }
         throw $e;
     }

@@ -1,7 +1,7 @@
-@mod_forum
+@mod @mod_forum
 Feature: Students can edit or delete their forum posts within a set time limit
   In order to refine forum posts
-  As a moodle user
+  As a user
   I need to edit or delete my forum posts within a certain period of time after posting
 
   Background:
@@ -23,7 +23,7 @@ Feature: Students can edit or delete their forum posts within a set time limit
     And I am on homepage
     And I follow "Course 1"
     And I turn editing mode on
-    And I add a "forum" to section "1" and I fill the form with:
+    And I add a "Forum" to section "1" and I fill the form with:
       | Forum name | Test forum name |
       | Forum type | Standard forum for general use |
       | Description | Test forum description |
@@ -33,9 +33,7 @@ Feature: Students can edit or delete their forum posts within a set time limit
     And I add a new discussion to "Test forum name" forum with:
       | Subject | Forum post subject |
       | Message | This is the body |
-    And I wait "6" seconds
 
-  @javascript
   Scenario: Edit forum post
     When I follow "Forum post subject"
     And I follow "Edit"
@@ -43,7 +41,7 @@ Feature: Students can edit or delete their forum posts within a set time limit
       | Subject | Edited post subject |
       | Message | Edited post body |
     And I press "Save changes"
-    And I wait "6" seconds
+    And I wait to be redirected
     Then I should see "Edited post subject"
     And I should see "Edited post body"
 

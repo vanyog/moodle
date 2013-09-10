@@ -1128,7 +1128,7 @@ function session_set_user($user) {
     }
     sesskey(); // init session key
 
-    if (PHPUNIT_TEST || defined('BEHAT_RUNNING')) {
+    if (PHPUNIT_TEST || defined('BEHAT_TEST')) {
         // phpunit tests use reversed reference
         global $USER;
         $USER = $_SESSION['USER'];
@@ -1163,11 +1163,13 @@ function session_get_realuser() {
  * @return void
  */
 function session_loginas($userid, $context) {
+    global $USER;
+
     if (session_is_loggedinas()) {
         return;
     }
 
-    // switch to fresh new $SESSION
+    // Switch to fresh new $SESSION.
     $_SESSION['REALSESSION'] = $_SESSION['SESSION'];
     $_SESSION['SESSION']     = new stdClass();
 
@@ -1177,10 +1179,24 @@ function session_loginas($userid, $context) {
     $user->realuser       = $_SESSION['REALUSER']->id;
     $user->loginascontext = $context;
 
-    // let enrol plugins deal with new enrolments if necessary
+    // Let enrol plugins deal with new enrolments if necessary.
     enrol_check_plugins($user);
-    // set up global $USER
+
+    // Create event before $USER is updated.
+    $event = \core\event\user_loggedinas::create(
+        array(
+            'objectid' => $USER->id,
+            'context' => $context,
+            'relateduserid' => $userid,
+            'other' => array(
+                'originalusername' => fullname($USER, true),
+                'loggedinasusername' => fullname($user, true)
+                )
+            )
+        );
+    // Set up global $USER.
     session_set_user($user);
+    $event->trigger();
 }
 
 /**

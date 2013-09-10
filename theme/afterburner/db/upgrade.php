@@ -17,8 +17,7 @@
 /**
  * Afterburner upgrades.
  *
- * @package    theme
- * @subpackage afterburner
+ * @package    theme_afterburner
  * @copyright  2013 Petr Skoda {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -60,6 +59,10 @@ function xmldb_theme_afterburner_upgrade($oldversion) {
 
         upgrade_plugin_savepoint(true, 2013041200, 'theme', 'afterburner');
     }
+
+
+    // Moodle v2.5.0 release upgrade line.
+    // Put any upgrade step following this.
 
 
     return true;

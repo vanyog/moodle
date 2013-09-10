@@ -17,8 +17,7 @@
 /**
  * Renderers for the mymobile theme
  *
- * @package    theme
- * @subpackage mymobile
+ * @package    theme_mymobile
  * @copyright  John Stabinger
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -26,8 +25,7 @@
 /**
  * A custom renderer for the mymobile theme to produce snippets of content.
  *
- * @package    theme
- * @subpackage mymobile
+ * @package    theme_mymobile
  * @copyright  John Stabinger
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -105,8 +103,7 @@ class theme_mymobile_renderer extends plugin_renderer_base {
 /**
  * Overridden core renderer for the mymobile theme
  *
- * @package    theme
- * @subpackage mymobile
+ * @package    theme_mymobile
  * @copyright  John Stabinger
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -802,13 +799,12 @@ class theme_mymobile_core_renderer extends core_renderer {
 /**
  * Overridden choice module renderer for the mymobile theme
  *
- * @package    theme
- * @subpackage mymobile
+ * @package    theme_mymobile
  * @copyright  John Stabinger
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$choice = get_plugin_directory('mod', 'choice');
+$choice = core_component::get_plugin_directory('mod', 'choice');
 if (file_exists($choice . '/renderer.php')) {
     require_once($CFG->dirroot . '/theme/mymobile/renderers/mod_choice_renderer.php');
 }

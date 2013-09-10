@@ -29,7 +29,14 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// Force OPcache reset if used, we do not want any stale caches
+// when detecting if upgrade necessary or when running upgrade.
+if (function_exists('opcache_reset') and !isset($_SERVER['REMOTE_ADDR'])) {
+    opcache_reset();
+}
+
 define('CLI_SCRIPT', true);
+define('CACHE_DISABLE_ALL', true);
 
 require(dirname(dirname(dirname(__FILE__))).'/config.php');
 require_once($CFG->libdir.'/adminlib.php');       // various admin-only functions
@@ -150,6 +157,12 @@ if ($interactive) {
 }
 
 if ($version > $CFG->version) {
+    // We purge all of MUC's caches here.
+    // Caches are disabled for upgrade by CACHE_DISABLE_ALL so we must set the first arg to true.
+    // This ensures a real config object is loaded and the stores will be purged.
+    // This is the only way we can purge custom caches such as memcache or APC.
+    // Note: all other calls to caches will still used the disabled API.
+    cache_helper::purge_all(true);
     upgrade_core($version, true);
 }
 set_config('release', $release);

@@ -31,8 +31,22 @@ error_reporting(E_ALL | E_STRICT);
 ini_set('display_errors', '1');
 ini_set('log_errors', '1');
 
+// Make sure OPcache does not strip comments, we need them in phpunit!
+if (ini_get('opcache.enable') and strtolower(ini_get('opcache.enable')) !== 'off') {
+    if (!ini_get('opcache.save_comments') or strtolower(ini_get('opcache.save_comments')) === 'off') {
+        ini_set('opcache.enable', 0);
+    } else {
+        ini_set('opcache.load_comments', 1);
+    }
+}
+
+if (!defined('IGNORE_COMPONENT_CACHE')) {
+    define('IGNORE_COMPONENT_CACHE', true);
+}
+
 require_once(__DIR__.'/bootstraplib.php');
 require_once(__DIR__.'/../testing/lib.php');
+require_once(__DIR__.'/classes/autoloader.php');
 
 if (isset($_SERVER['REMOTE_ADDR'])) {
     phpunit_bootstrap_error(1, 'Unit tests can be executed only from command line!');
@@ -184,6 +198,7 @@ unset($productioncfg);
 
 // force the same CFG settings in all sites
 $CFG->debug = (E_ALL | E_STRICT); // can not use DEBUG_DEVELOPER yet
+$CFG->debugdeveloper = true;
 $CFG->debugdisplay = 1;
 error_reporting($CFG->debug);
 ini_set('display_errors', '1');

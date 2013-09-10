@@ -86,7 +86,7 @@ class enrol_cohort_plugin extends enrol_plugin {
         if (!has_capability('moodle/course:enrolconfig', $coursecontext) or !has_capability('enrol/cohort:config', $coursecontext)) {
             return false;
         }
-        list($sqlparents, $params) = $DB->get_in_or_equal(get_parent_contexts($coursecontext));
+        list($sqlparents, $params) = $DB->get_in_or_equal($coursecontext->get_parent_context_ids());
         $sql = "SELECT id, contextid
                   FROM {cohort}
                  WHERE contextid $sqlparents
@@ -119,7 +119,7 @@ class enrol_cohort_plugin extends enrol_plugin {
         if (has_capability('enrol/cohort:config', $context)) {
             $editlink = new moodle_url("/enrol/cohort/edit.php", array('courseid'=>$instance->courseid, 'id'=>$instance->id));
             $icons[] = $OUTPUT->action_icon($editlink, new pix_icon('t/edit', get_string('edit'), 'core',
-                    array('class' => 'smallicon')));
+                    array('class' => 'iconsmall')));
         }
 
         return $icons;

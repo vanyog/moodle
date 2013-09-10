@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -19,8 +18,7 @@
  * Adds new instance of enrol_paypal to specified course
  * or edits current instance.
  *
- * @package    enrol
- * @subpackage paypal
+ * @package    enrol_paypal
  * @copyright  2010 Petr Skoda  {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -48,7 +46,7 @@ class enrol_paypal_edit_form extends moodleform {
 
         $mform->addElement('text', 'cost', get_string('cost', 'enrol_paypal'), array('size'=>4));
         $mform->setType('cost', PARAM_RAW); // Use unformat_float to get real value.
-        $mform->setDefault('cost', $plugin->get_config('cost'));
+        $mform->setDefault('cost', format_float($plugin->get_config('cost'), 2, true));
 
         $paypalcurrencies = $plugin->get_currencies();
         $mform->addElement('select', 'currency', get_string('currency', 'enrol_paypal'), $paypalcurrencies);
@@ -92,15 +90,13 @@ class enrol_paypal_edit_form extends moodleform {
 
         list($instance, $plugin, $context) = $this->_customdata;
 
-        if ($data['status'] == ENROL_INSTANCE_ENABLED) {
-            if (!empty($data['enrolenddate']) and $data['enrolenddate'] < $data['enrolstartdate']) {
-                $errors['enrolenddate'] = get_string('enrolenddaterror', 'enrol_paypal');
-            }
+        if (!empty($data['enrolenddate']) and $data['enrolenddate'] < $data['enrolstartdate']) {
+            $errors['enrolenddate'] = get_string('enrolenddaterror', 'enrol_paypal');
+        }
 
-            if (!is_numeric($data['cost'])) {
-                $errors['cost'] = get_string('costerror', 'enrol_paypal');
-
-            }
+        $cost = str_replace(get_string('decsep', 'langconfig'), '.', $data['cost']);
+        if (!is_numeric($cost)) {
+            $errors['cost'] = get_string('costerror', 'enrol_paypal');
         }
 
         return $errors;

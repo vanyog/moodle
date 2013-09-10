@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,8 +17,7 @@
 /**
  * Various enrol UI forms
  *
- * @package    core
- * @subpackage enrol
+ * @package    core_enrol
  * @copyright  2010 Petr Skoda {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -164,6 +162,22 @@ class enrol_users_filter_form extends moodleform {
         }
         $mform->addElement('select', 'role', get_string('role'),
                 array(0 => get_string('all')) + $rolenames);
+
+        // Filter by group.
+        $allgroups = $manager->get_all_groups();
+        $groupsmenu[0] = get_string('allparticipants');
+        foreach($allgroups as $gid => $unused) {
+            $groupsmenu[$gid] = $allgroups[$gid]->name;
+        }
+        if (count($groupsmenu) > 1) {
+            $mform->addElement('select', 'filtergroup', get_string('group'), $groupsmenu);
+        }
+
+        // Status active/inactive.
+        $mform->addElement('select', 'status', get_string('status'),
+                array(-1 => get_string('all'),
+                    ENROL_USER_ACTIVE => get_string('active'),
+                    ENROL_USER_SUSPENDED => get_string('inactive')));
 
         // Submit button does not use add_action_buttons because that adds
         // another fieldset which causes the CSS style to break in an unfixable

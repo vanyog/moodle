@@ -1,22 +1,32 @@
 <?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @author Martin Dougiamas
- * @author Jerome GUTIERREZ
- * @author Iñaki Arenaza
- * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
- * @package moodle multiauth
- *
  * Authentication Plugin: CAS Authentication
  *
  * Authentication using CAS (Central Authentication Server).
  *
- * 2006-08-28  File created.
+ * @author Martin Dougiamas
+ * @author Jerome GUTIERREZ
+ * @author Iñaki Arenaza
+ * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
+ * @package auth_cas
  */
 
-if (!defined('MOODLE_INTERNAL')) {
-    die('Direct access to this script is forbidden.');    ///  It must be included from a Moodle page
-}
+defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot.'/auth/ldap/auth.php');
 require_once($CFG->dirroot.'/auth/cas/CAS/CAS.php');
@@ -51,7 +61,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
      */
     function user_login ($username, $password) {
         $this->connectCAS();
-        return phpCAS::isAuthenticated() && (trim(textlib::strtolower(phpCAS::getUser())) == $username);
+        return phpCAS::isAuthenticated() && (trim(core_text::strtolower(phpCAS::getUser())) == $username);
     }
 
     /**
@@ -164,7 +174,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
      *
      */
     function connectCAS() {
-        global $PHPCAS_CLIENT;
+        global $CFG, $PHPCAS_CLIENT;
 
         if (!is_object($PHPCAS_CLIENT)) {
             // Make sure phpCAS doesn't try to start a new PHP session when connecting to the CAS server.
@@ -172,6 +182,27 @@ class auth_plugin_cas extends auth_plugin_ldap {
                 phpCAS::proxy($this->config->casversion, $this->config->hostname, (int) $this->config->port, $this->config->baseuri, false);
             } else {
                 phpCAS::client($this->config->casversion, $this->config->hostname, (int) $this->config->port, $this->config->baseuri, false);
+            }
+        }
+
+        // If Moodle is configured to use a proxy, phpCAS needs some curl options set.
+        if (!empty($CFG->proxyhost) && !is_proxybypass($this->config->hostname)) {
+            phpCAS::setExtraCurlOption(CURLOPT_PROXY, $CFG->proxyhost);
+            if (!empty($CFG->proxyport)) {
+                phpCAS::setExtraCurlOption(CURLOPT_PROXYPORT, $CFG->proxyport);
+            }
+            if (!empty($CFG->proxytype)) {
+                // Only set CURLOPT_PROXYTYPE if it's something other than the curl-default http
+                if ($CFG->proxytype == 'SOCKS5') {
+                    phpCAS::setExtraCurlOption(CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+                }
+            }
+            if (!empty($CFG->proxyuser) and !empty($CFG->proxypassword)) {
+                phpCAS::setExtraCurlOption(CURLOPT_PROXYUSERPWD, $CFG->proxyuser.':'.$CFG->proxypassword);
+                if (defined('CURLOPT_PROXYAUTH')) {
+                    // any proxy authentication if PHP 5.1
+                    phpCAS::setExtraCurlOption(CURLOPT_PROXYAUTH, CURLAUTH_BASIC | CURLAUTH_NTLM);
+                }
             }
         }
 
@@ -350,15 +381,15 @@ class auth_plugin_cas extends auth_plugin_ldap {
         set_config('ldapencoding', trim($config->ldapencoding), $this->pluginconfig);
         set_config('pagesize', (int)trim($config->pagesize), $this->pluginconfig);
         set_config('contexts', trim($config->contexts), $this->pluginconfig);
-        set_config('user_type', textlib::strtolower(trim($config->user_type)), $this->pluginconfig);
-        set_config('user_attribute', textlib::strtolower(trim($config->user_attribute)), $this->pluginconfig);
+        set_config('user_type', core_text::strtolower(trim($config->user_type)), $this->pluginconfig);
+        set_config('user_attribute', core_text::strtolower(trim($config->user_attribute)), $this->pluginconfig);
         set_config('search_sub', $config->search_sub, $this->pluginconfig);
         set_config('opt_deref', $config->opt_deref, $this->pluginconfig);
         set_config('bind_dn', trim($config->bind_dn), $this->pluginconfig);
         set_config('bind_pw', $config->bind_pw, $this->pluginconfig);
         set_config('ldap_version', $config->ldap_version, $this->pluginconfig);
         set_config('objectclass', trim($config->objectclass), $this->pluginconfig);
-        set_config('memberattribute', textlib::strtolower(trim($config->memberattribute)), $this->pluginconfig);
+        set_config('memberattribute', core_text::strtolower(trim($config->memberattribute)), $this->pluginconfig);
         set_config('memberattribute_isdn', $config->memberattribute_isdn, $this->pluginconfig);
         set_config('attrcreators', trim($config->attrcreators), $this->pluginconfig);
         set_config('groupecreators', trim($config->groupecreators), $this->pluginconfig);
@@ -378,7 +409,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
             return false;
         }
 
-        $extusername = textlib::convert($username, 'utf-8', $this->config->ldapencoding);
+        $extusername = core_text::convert($username, 'utf-8', $this->config->ldapencoding);
 
         // Test for group creator
         if (!empty($this->config->groupecreators)) {

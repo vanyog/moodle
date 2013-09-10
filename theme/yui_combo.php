@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,7 +17,7 @@
 /**
  * This file is responsible for serving of yui images
  *
- * @package   moodlecore
+ * @package   core
  * @copyright 2009 Petr Skoda (skodak)  {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -61,7 +60,7 @@ if (strpos($parts, '/-1/') === false and (!empty($_SERVER['HTTP_IF_NONE_MATCH'])
     header('Expires: '. gmdate('D, d M Y H:i:s', time() + $lifetime) .' GMT');
     header('Cache-Control: public, max-age='.$lifetime);
     header('Content-Type: '.$mimetype);
-    header('Etag: '.$etag);
+    header('Etag: "'.$etag.'"');
     die;
 }
 
@@ -88,12 +87,6 @@ foreach ($parts as $part) {
             $content .= "\n// Incorrect moodle module inclusion. Not enough component information in {$part}.\n";
             continue;
         }
-        if (!defined('ABORT_AFTER_CONFIG_CANCEL')) {
-            define('ABORT_AFTER_CONFIG_CANCEL', true);
-            define('NO_UPGRADE_CHECK', true);
-            define('NO_MOODLE_COOKIES', true);
-            require($CFG->libdir.'/setup.php');
-        }
         $revision = (int)array_shift($bits);
         if ($revision === -1) {
             // Revision -1 says please don't cache the JS
@@ -102,23 +95,28 @@ foreach ($parts as $part) {
         $frankenstyle = array_shift($bits);
         $filename = array_pop($bits);
         $modulename = $bits[0];
-        $dir = get_component_directory($frankenstyle);
+        $dir = core_component::get_component_directory($frankenstyle);
 
         // For shifted YUI modules, we need the YUI module name in frankenstyle format.
         $frankenstylemodulename = join('-', array($version, $frankenstyle, $modulename));
         $frankenstylefilename = preg_replace('/' . $modulename . '/', $frankenstylemodulename, $filename);
 
+        // Submodules are stored in a directory with the full submodule name.
+        // We need to remove the -debug.js, -min.js, and .js from the file name to calculate that directory name.
+        $frankenstyledirectoryname = str_replace(array('-min.js', '-debug.js', '.js'), '', $frankenstylefilename);
+
         // By default, try and use the /yui/build directory.
+        $contentfile = $dir . '/yui/build/' . $frankenstyledirectoryname;
         if ($mimetype == 'text/css') {
             // CSS assets are in a slightly different place to the JS.
-            $contentfile = $dir . '/yui/build/' . $frankenstylemodulename . '/assets/skins/sam/' . $frankenstylefilename;
+            $contentfile = $contentfile . '/assets/skins/sam/' . $frankenstylefilename;
 
             // Add the path to the bits to handle fallback for non-shifted assets.
             $bits[] = 'assets';
             $bits[] = 'skins';
             $bits[] = 'sam';
         } else {
-            $contentfile = $dir . '/yui/build/' . $frankenstylemodulename . '/' . $frankenstylefilename;
+            $contentfile = $contentfile . '/' . $frankenstylefilename;
         }
 
         // If the shifted versions don't exist, fall back to the non-shifted file.
@@ -224,7 +222,7 @@ function combo_send_cached($content, $mimetype, $etag, $lastmodified) {
     header('Cache-Control: public, max-age='.$lifetime);
     header('Accept-Ranges: none');
     header('Content-Type: '.$mimetype);
-    header('Etag: '.$etag);
+    header('Etag: "'.$etag.'"');
     if (!min_enable_zlib_compression()) {
         header('Content-Length: '.strlen($content));
     }

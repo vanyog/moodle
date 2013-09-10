@@ -23,9 +23,12 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
         new lang_string('configprofileroles', 'admin'),
         array('student', 'teacher', 'editingteacher')));
 
-    $max_upload_choices = get_max_upload_sizes();
+    $maxbytes = 0;
+    if (!empty($CFG->maxbytes)) {
+        $maxbytes = $CFG->maxbytes;
+    }
+    $max_upload_choices = get_max_upload_sizes(0, 0, 0, $maxbytes);
     // maxbytes set to 0 will allow the maximum server limit for uploads
-    $max_upload_choices[0] = new lang_string('serverlimit', 'admin');
     $temp->add(new admin_setting_configselect('maxbytes', new lang_string('maxbytes', 'admin'), new lang_string('configmaxbytes', 'admin'), 0, $max_upload_choices));
     // 100MB
     $defaultuserquota = 104857600;
@@ -43,11 +46,7 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
                        1800 => new lang_string('numminutes', '', 30),
                        2700 => new lang_string('numminutes', '', 45),
                        3600 => new lang_string('numminutes', '', 60))));
-    $temp->add(new admin_setting_configselect('fullnamedisplay', new lang_string('fullnamedisplay', 'admin'), new lang_string('configfullnamedisplay', 'admin'),
-                  'language', array('language' => new lang_string('language'),
-                                              'firstname lastname' => new lang_string('firstname').' + '.new lang_string('lastname'),
-                                              'lastname firstname' => new lang_string('lastname').' + '.new lang_string('firstname'),
-                                              'firstname' => new lang_string('firstname'))));
+
     $temp->add(new admin_setting_configcheckbox('extendedusernamechars', new lang_string('extendedusernamechars', 'admin'), new lang_string('configextendedusernamechars', 'admin'), 0));
     $temp->add(new admin_setting_configtext('sitepolicy', new lang_string('sitepolicy', 'admin'), new lang_string('sitepolicy_help', 'admin'), '', PARAM_RAW));
     $temp->add(new admin_setting_configtext('sitepolicyguest', new lang_string('sitepolicyguest', 'admin'), new lang_string('sitepolicyguest_help', 'admin'), (isset($CFG->sitepolicy) ? $CFG->sitepolicy : ''), PARAM_RAW));

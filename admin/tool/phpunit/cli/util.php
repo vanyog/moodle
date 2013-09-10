@@ -28,6 +28,8 @@ if (isset($_SERVER['REMOTE_ADDR'])) {
     die; // no access from web!
 }
 
+define('IGNORE_COMPONENT_CACHE', true);
+
 require_once(__DIR__.'/../../../../lib/clilib.php');
 require_once(__DIR__.'/../../../../lib/phpunit/bootstraplib.php');
 require_once(__DIR__.'/../../../../lib/testing/lib.php');
@@ -58,6 +60,10 @@ if (file_exists(__DIR__.'/../../../../vendor/phpunit/phpunit/PHPUnit/Autoload.ph
     if (!include('PHPUnit/Autoload.php')) {
         phpunit_bootstrap_error(PHPUNIT_EXITCODE_PHPUNITMISSING);
     }
+}
+
+if ($options['install'] or $options['drop']) {
+    define('CACHE_DISABLE_ALL', true);
 }
 
 if ($options['run']) {

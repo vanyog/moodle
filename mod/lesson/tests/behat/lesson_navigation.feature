@@ -1,4 +1,4 @@
-@mod_lesson @mod
+@mod @mod_lesson
 Feature: In a lesson activity, students can navigate through a series of pages in various ways depending upon their answers to questions
   In order to create a lesson with conditional paths
   As a teacher
@@ -40,7 +40,7 @@ Feature: In a lesson activity, students can navigate through a series of pages i
       | id_jumpto_1 | Next page |
     And I press "Save page"
     And I follow "Expanded"
-    And I click on "Add a question page here" "link" in the "//div[contains(concat(' ', @class, ' '), ' addlinks ')][3]" "xpath_element"
+    And I click on "Add a question page here" "link" in the "//div[contains(concat(' ', normalize-space(@class), ' '), ' addlinks ')][3]" "xpath_element"
     And I select "Numerical" from "Select a question type"
     And I press "Add a question page"
     And I fill the moodle form with:
@@ -55,7 +55,6 @@ Feature: In a lesson activity, students can navigate through a series of pages i
       | id_jumpto_1 | Second page name |
       | id_score_1 | 0 |
     And I press "Save page"
-    And I follow "Continue"
     And I log out
     And I log in as "student1"
     And I follow "Course 1"

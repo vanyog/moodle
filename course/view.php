@@ -4,7 +4,6 @@
 
     require_once('../config.php');
     require_once('lib.php');
-    require_once($CFG->dirroot.'/mod/forum/lib.php');
     require_once($CFG->libdir.'/conditionlib.php');
     require_once($CFG->libdir.'/completionlib.php');
 
@@ -50,7 +49,7 @@
     // Prevent caching of this page to stop confusion when changing page after making AJAX changes
     $PAGE->set_cacheable(false);
 
-    preload_course_contexts($course->id);
+    context_helper::preload_course($course->id);
     $context = context_course::instance($course->id, MUST_EXIST);
 
     // Remove any switched roles before checking login
@@ -122,7 +121,13 @@
 
     $PAGE->set_pagelayout('course');
     $PAGE->set_pagetype('course-view-' . $course->format);
+    $PAGE->set_other_editing_capability('moodle/course:update');
     $PAGE->set_other_editing_capability('moodle/course:manageactivities');
+    $PAGE->set_other_editing_capability('moodle/course:activityvisibility');
+    if (course_format_uses_sections($course->format)) {
+        $PAGE->set_other_editing_capability('moodle/course:sectionvisibility');
+        $PAGE->set_other_editing_capability('moodle/course:movesections');
+    }
 
     // Preload course format renderer before output starts.
     // This is a little hacky but necessary since
@@ -189,20 +194,17 @@
             }
         }
 
-        if (has_capability('moodle/course:update', $context)) {
-            if (!empty($section)) {
-                if (!empty($move) and has_capability('moodle/course:movesections', $context) and confirm_sesskey()) {
-                    $destsection = $section + $move;
-                    if (move_section_to($course, $section, $destsection)) {
-                        if ($course->id == SITEID) {
-                            redirect($CFG->wwwroot . '/?redirect=0');
-                        } else {
-                            redirect(course_get_url($course));
-                        }
-                    } else {
-                        echo $OUTPUT->notification('An error occurred while moving a section');
-                    }
+        if (!empty($section) && !empty($move) &&
+                has_capability('moodle/course:movesections', $context) && confirm_sesskey()) {
+            $destsection = $section + $move;
+            if (move_section_to($course, $section, $destsection)) {
+                if ($course->id == SITEID) {
+                    redirect($CFG->wwwroot . '/?redirect=0');
+                } else {
+                    redirect(course_get_url($course));
                 }
+            } else {
+                echo $OUTPUT->notification('An error occurred while moving a section');
             }
         }
     } else {
@@ -217,8 +219,10 @@
         redirect($CFG->wwwroot .'/');
     }
 
+    $ajaxenabled = ajaxenabled();
+
     $completion = new completion_info($course);
-    if ($completion->is_enabled() && ajaxenabled()) {
+    if ($completion->is_enabled() && $ajaxenabled) {
         $PAGE->requires->string_for_js('completion-title-manual-y', 'completion');
         $PAGE->requires->string_for_js('completion-title-manual-n', 'completion');
         $PAGE->requires->string_for_js('completion-alt-manual-y', 'completion');
@@ -239,7 +243,7 @@
     $PAGE->set_heading($course->fullname);
     echo $OUTPUT->header();
 
-    if ($completion->is_enabled() && ajaxenabled()) {
+    if ($completion->is_enabled() && $ajaxenabled) {
         // This value tracks whether there has been a dynamic change to the page.
         // It is used so that if a user does this - (a) set some tickmarks, (b)
         // go to another page, (c) clicks Back button - the page will

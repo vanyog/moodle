@@ -35,7 +35,7 @@ function scorm_report_list($context) {
     if (!empty($reportlist)) {
         return $reportlist;
     }
-    $installed = get_plugin_list('scormreport');
+    $installed = core_component::get_plugin_list('scormreport');
     foreach ($installed as $reportname => $notused) {
         $pluginfile = $CFG->dirroot.'/mod/scorm/report/'.$reportname.'/report.php';
         if (is_readable($pluginfile)) {
@@ -69,14 +69,14 @@ function get_scorm_question_count($scormid) {
     $rs = $DB->get_recordset_select("scorm_scoes_track", $select, $params, 'element');
     $keywords = array("cmi.interactions_", ".id");
     if ($rs->valid()) {
-        // Done as interactions start at 0 (do only if we have something to report).
-        $count++;
         foreach ($rs as $record) {
             $num = trim(str_ireplace($keywords, '', $record->element));
             if (is_numeric($num) && $num > $count) {
                 $count = $num;
             }
         }
+        // Done as interactions start at 0 (do only if we have something to report).
+        $count++;
     }
     $rs->close(); // closing recordset
     return $count;

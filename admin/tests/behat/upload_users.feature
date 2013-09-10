@@ -1,7 +1,7 @@
-@admin @_only_local
+@core @core_admin @_only_local
 Feature: Upload users
   In order to add users to the system
-  As a moodle admin
+  As an admin
   I need to upload files containing the users data
 
   @javascript
@@ -14,7 +14,7 @@ Feature: Upload users
       | Section 1 | math102 | S1 |
       | Section 3 | math102 | S3 |
     And I log in as "admin"
-    And I expand "Front page settings" node
+    And I collapse "Front page settings" node
     And I expand "Site administration" node
     And I expand "Users" node
     And I expand "Accounts" node

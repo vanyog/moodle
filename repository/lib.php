@@ -251,10 +251,11 @@ class repository_type implements cacheable_object {
                     // for it
                     $instanceoptions['name'] = $this->_options['pluginname'];
                 }
-                repository::static_function($this->_typename, 'create', $this->_typename, 0, get_system_context(), $instanceoptions);
+                repository::static_function($this->_typename, 'create', $this->_typename, 0, context_system::instance(), $instanceoptions);
             }
             //run plugin_init function
             if (!repository::static_function($this->_typename, 'plugin_init')) {
+                $this->update_visibility(false);
                 if (!$silent) {
                     throw new repository_exception('cannotinitplugin', 'repository');
                 }
@@ -958,7 +959,7 @@ abstract class repository implements cacheable_object {
     public static function get_editable_types($context = null) {
 
         if (empty($context)) {
-            $context = get_system_context();
+            $context = context_system::instance();
         }
 
         $types= repository::get_types(true);
@@ -1139,7 +1140,7 @@ abstract class repository implements cacheable_object {
      *
      * @static
      * @param string $plugin repository plugin name
-     * @param string $function funciton name
+     * @param string $function function name
      * @return mixed
      */
     public static function static_function($plugin, $function) {
@@ -1150,14 +1151,6 @@ abstract class repository implements cacheable_object {
         if (!file_exists($typedirectory)) {
             //throw new repository_exception('invalidplugin', 'repository');
             return false;
-        }
-
-        $pname = null;
-        if (is_object($plugin) || is_array($plugin)) {
-            $plugin = (object)$plugin;
-            $pname = $plugin->name;
-        } else {
-            $pname = $plugin;
         }
 
         $args = func_get_args();
@@ -1206,11 +1199,17 @@ abstract class repository implements cacheable_object {
             return;
         }
 
-        // do NOT mess with permissions here, the calling party is responsible for making
-        // sure the scanner engine can access the files!
-
+        $clamparam = ' --stdout ';
+        // If we are dealing with clamdscan, clamd is likely run as a different user
+        // that might not have permissions to access your file.
+        // To make clamdscan work, we use --fdpass parameter that passes the file
+        // descriptor permissions to clamd, which allows it to scan given file
+        // irrespective of directory and file permissions.
+        if (basename($CFG->pathtoclam) == 'clamdscan') {
+            $clamparam .= '--fdpass ';
+        }
         // execute test
-        $cmd = escapeshellcmd($CFG->pathtoclam).' --stdout '.escapeshellarg($thefile);
+        $cmd = escapeshellcmd($CFG->pathtoclam).$clamparam.escapeshellarg($thefile);
         exec($cmd, $output, $return);
 
         if ($return == 0) {
@@ -2072,6 +2071,32 @@ abstract class repository implements cacheable_object {
     }
 
     /**
+     * Delete all the instances associated to a context.
+     *
+     * This method is intended to be a callback when deleting
+     * a course or a user to delete all the instances associated
+     * to their context. The usual way to delete a single instance
+     * is to use {@link self::delete()}.
+     *
+     * @param int $contextid context ID.
+     * @param boolean $downloadcontents true to convert references to hard copies.
+     * @return void
+     */
+    final public static function delete_all_for_context($contextid, $downloadcontents = true) {
+        global $DB;
+        $repoids = $DB->get_fieldset_select('repository_instances', 'id', 'contextid = :contextid', array('contextid' => $contextid));
+        if ($downloadcontents) {
+            foreach ($repoids as $repoid) {
+                $repo = repository::get_repository_by_id($repoid, $contextid);
+                $repo->convert_references_to_local();
+            }
+        }
+        cache::make('core', 'repositories')->purge();
+        $DB->delete_records_list('repository_instances', 'id', $repoids);
+        $DB->delete_records_list('repository_instance_config', 'instanceid', $repoids);
+    }
+
+    /**
      * Hide/Show a repository
      *
      * @param string $hide
@@ -2131,10 +2156,11 @@ abstract class repository implements cacheable_object {
     }
 
     /**
-     * Get settings for repository instance
+     * Get settings for repository instance.
      *
-     * @param string $config
-     * @return array Settings
+     * @param string $config a specific option to get.
+     * @return mixed returns an array of options. If $config is not empty, then it returns that option,
+     *               or null if the option does not exist.
      */
     public function get_option($config = '') {
         global $DB;
@@ -2143,13 +2169,12 @@ abstract class repository implements cacheable_object {
             $entries = $DB->get_records('repository_instance_config', array('instanceid' => $this->id));
             $cache->set('ops:'. $this->id, $entries);
         }
+
         $ret = array();
-        if (empty($entries)) {
-            return $ret;
-        }
         foreach($entries as $entry) {
             $ret[$entry->name] = $entry->value;
         }
+
         if (!empty($config)) {
             if (isset($ret[$config])) {
                 return $ret[$config];
@@ -2405,7 +2430,7 @@ abstract class repository implements cacheable_object {
 
     /**
      * For oauth like external authentication, when external repository direct user back to moodle,
-     * this funciton will be called to set up token and token_secret
+     * this function will be called to set up token and token_secret
      */
     public function callback() {
     }
@@ -2517,8 +2542,8 @@ abstract class repository implements cacheable_object {
      * @return string short filename
      */
     public function get_short_filename($str, $maxlength) {
-        if (textlib::strlen($str) >= $maxlength) {
-            return trim(textlib::substr($str, 0, $maxlength)).'...';
+        if (core_text::strlen($str) >= $maxlength) {
+            return trim(core_text::substr($str, 0, $maxlength)).'...';
         } else {
             return $str;
         }
@@ -2540,16 +2565,128 @@ abstract class repository implements cacheable_object {
         $user_context = context_user::instance($USER->id);
         if ($file = $fs->get_file($user_context->id, 'user', 'draft', $itemid, $filepath, $filename)) {
             if ($tempfile = $fs->get_file($user_context->id, 'user', 'draft', $itemid, $newfilepath, $newfilename)) {
+                // Remember original file source field.
+                $source = @unserialize($file->get_source());
+                if ($tempfile->is_external_file()) {
+                    // New file is a reference. Check that existing file does not have any other files referencing to it
+                    if (isset($source->original) && $fs->search_references_count($source->original)) {
+                        return (object)array('error' => get_string('errordoublereference', 'repository'));
+                    }
+                }
                 // delete existing file to release filename
                 $file->delete();
                 // create new file
                 $newfile = $fs->create_file_from_storedfile(array('filepath'=>$filepath, 'filename'=>$filename), $tempfile);
+                // Preserve original file location (stored in source field) for handling references
+                if (isset($source->original)) {
+                    if (!($newfilesource = @unserialize($newfile->get_source()))) {
+                        $newfilesource = new stdClass();
+                    }
+                    $newfilesource->original = $source->original;
+                    $newfile->set_source(serialize($newfilesource));
+                }
                 // remove temp file
                 $tempfile->delete();
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Updates a file in draft filearea.
+     *
+     * This function can only update fields filepath, filename, author, license.
+     * If anything (except filepath) is updated, timemodified is set to current time.
+     * If filename or filepath is updated the file unconnects from it's origin
+     * and therefore all references to it will be converted to copies when
+     * filearea is saved.
+     *
+     * @param int $draftid
+     * @param string $filepath path to the directory containing the file, or full path in case of directory
+     * @param string $filename name of the file, or '.' in case of directory
+     * @param array $updatedata array of fields to change (only filename, filepath, license and/or author can be updated)
+     * @throws moodle_exception if for any reason file can not be updated (file does not exist, target already exists, etc.)
+     */
+    public static function update_draftfile($draftid, $filepath, $filename, $updatedata) {
+        global $USER;
+        $fs = get_file_storage();
+        $usercontext = context_user::instance($USER->id);
+        // make sure filename and filepath are present in $updatedata
+        $updatedata = $updatedata + array('filepath' => $filepath, 'filename' => $filename);
+        $filemodified = false;
+        if (!$file = $fs->get_file($usercontext->id, 'user', 'draft', $draftid, $filepath, $filename)) {
+            if ($filename === '.') {
+                throw new moodle_exception('foldernotfound', 'repository');
+            } else {
+                throw new moodle_exception('filenotfound', 'error');
+            }
+        }
+        if (!$file->is_directory()) {
+            // This is a file
+            if ($updatedata['filepath'] !== $filepath || $updatedata['filename'] !== $filename) {
+                // Rename/move file: check that target file name does not exist.
+                if ($fs->file_exists($usercontext->id, 'user', 'draft', $draftid, $updatedata['filepath'], $updatedata['filename'])) {
+                    throw new moodle_exception('fileexists', 'repository');
+                }
+                if (($filesource = @unserialize($file->get_source())) && isset($filesource->original)) {
+                    unset($filesource->original);
+                    $file->set_source(serialize($filesource));
+                }
+                $file->rename($updatedata['filepath'], $updatedata['filename']);
+                // timemodified is updated only when file is renamed and not updated when file is moved.
+                $filemodified = $filemodified || ($updatedata['filename'] !== $filename);
+            }
+            if (array_key_exists('license', $updatedata) && $updatedata['license'] !== $file->get_license()) {
+                // Update license and timemodified.
+                $file->set_license($updatedata['license']);
+                $filemodified = true;
+            }
+            if (array_key_exists('author', $updatedata) && $updatedata['author'] !== $file->get_author()) {
+                // Update author and timemodified.
+                $file->set_author($updatedata['author']);
+                $filemodified = true;
+            }
+            // Update timemodified:
+            if ($filemodified) {
+                $file->set_timemodified(time());
+            }
+        } else {
+            // This is a directory - only filepath can be updated for a directory (it was moved).
+            if ($updatedata['filepath'] === $filepath) {
+                // nothing to update
+                return;
+            }
+            if ($fs->file_exists($usercontext->id, 'user', 'draft', $draftid, $updatedata['filepath'], '.')) {
+                // bad luck, we can not rename if something already exists there
+                throw new moodle_exception('folderexists', 'repository');
+            }
+            $xfilepath = preg_quote($filepath, '|');
+            if (preg_match("|^$xfilepath|", $updatedata['filepath'])) {
+                // we can not move folder to it's own subfolder
+                throw new moodle_exception('folderrecurse', 'repository');
+            }
+
+            // If directory changed the name, update timemodified.
+            $filemodified = (basename(rtrim($file->get_filepath(), '/')) !== basename(rtrim($updatedata['filepath'], '/')));
+
+            // Now update directory and all children.
+            $files = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftid);
+            foreach ($files as $f) {
+                if (preg_match("|^$xfilepath|", $f->get_filepath())) {
+                    $path = preg_replace("|^$xfilepath|", $updatedata['filepath'], $f->get_filepath());
+                    if (($filesource = @unserialize($f->get_source())) && isset($filesource->original)) {
+                        // unset original so the references are not shown any more
+                        unset($filesource->original);
+                        $f->set_source(serialize($filesource));
+                    }
+                    $f->rename($path, $f->get_filename());
+                    if ($filemodified && $f->get_filepath() === $updatedata['filepath'] && $f->get_filename() === $filename) {
+                        $f->set_timemodified(time());
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -2839,6 +2976,7 @@ final class repository_instance_form extends moodleform {
         $instance = (isset($this->_customdata['instance'])
                 && is_subclass_of($this->_customdata['instance'], 'repository'))
             ? $this->_customdata['instance'] : null;
+
         if (!$instance) {
             $errors = repository::static_function($plugin, 'instance_form_validation', $this, $data, $errors);
         } else {
@@ -2847,8 +2985,13 @@ final class repository_instance_form extends moodleform {
 
         $sql = "SELECT count('x')
                   FROM {repository_instances} i, {repository} r
-                 WHERE r.type=:plugin AND r.id=i.typeid AND i.name=:name";
-        if ($DB->count_records_sql($sql, array('name' => $data['name'], 'plugin' => $data['plugin'])) > 1) {
+                 WHERE r.type=:plugin AND r.id=i.typeid AND i.name=:name AND i.contextid=:contextid";
+        $params = array('name' => $data['name'], 'plugin' => $this->plugin, 'contextid' => $this->contextid);
+        if ($instance) {
+            $sql .= ' AND i.id != :instanceid';
+            $params['instanceid'] = $instance->id;
+        }
+        if ($DB->count_records_sql($sql, $params) > 0) {
             $errors['name'] = get_string('erroruniquename', 'repository');
         }
 
@@ -2908,12 +3051,14 @@ final class repository_type_form extends moodleform {
                 $component .= ('_' . $this->plugin);
             }
             $mform->addElement('checkbox', 'enablecourseinstances', get_string('enablecourseinstances', $component));
+            $mform->setType('enablecourseinstances', PARAM_BOOL);
 
             $component = 'repository';
             if ($sm->string_exists('enableuserinstances', 'repository_' . $this->plugin)) {
                 $component .= ('_' . $this->plugin);
             }
             $mform->addElement('checkbox', 'enableuserinstances', get_string('enableuserinstances', $component));
+            $mform->setType('enableuserinstances', PARAM_BOOL);
         }
 
         // set the data if we have some.
@@ -3016,7 +3161,7 @@ function initialise_filepicker($args) {
     $user_context = context_user::instance($USER->id);
 
     list($context, $course, $cm) = get_context_info_array($context->id);
-    $contexts = array($user_context, get_system_context());
+    $contexts = array($user_context, context_system::instance());
     if (!empty($course)) {
         // adding course context
         $contexts[] = context_course::instance($course->id);
@@ -3073,15 +3218,4 @@ function initialise_filepicker($args) {
         $PAGE->requires->js_init_call('M.core_filepicker.set_templates', array($templates), true);
     }
     return $return;
-}
-
-/**
- * Small function to walk an array to attach repository ID
- *
- * @param array $value
- * @param string $key
- * @param int $id
- */
-function repository_attach_id(&$value, $key, $id){
-    $value['repo_id'] = $id;
 }

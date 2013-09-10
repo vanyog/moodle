@@ -53,11 +53,13 @@ $PAGE->set_heading($title);
 $PAGE->set_pagelayout('mydashboard');
 
 $backpack = $DB->get_record('badge_backpack', array('userid' => $USER->id));
+$badgescache = cache::make('core', 'externalbadges');
 
 if ($disconnect && $backpack) {
     require_sesskey();
     $DB->delete_records('badge_external', array('backpackid' => $backpack->id));
     $DB->delete_records('badge_backpack', array('userid' => $USER->id));
+    $badgescache->delete($USER->id);
     redirect(new moodle_url('/badges/mybackpack.php'));
 }
 
@@ -78,7 +80,11 @@ if ($backpack) {
     if ($form->is_cancelled()) {
         redirect(new moodle_url('/badges/mybadges.php'));
     } else if ($data = $form->get_data()) {
-        $groups = array_filter($data->group);
+        if (empty($data->group)) {
+            redirect(new moodle_url('/badges/mybadges.php'));
+        } else {
+            $groups = array_filter($data->group);
+        }
 
         // Remove all unselected collections if there are any.
         $sqlparams = array('backpack' => $backpack->id);
@@ -99,6 +105,7 @@ if ($backpack) {
                 $DB->insert_record('badge_external', $obj);
             }
         }
+        $badgescache->delete($USER->id);
         redirect(new moodle_url('/badges/mybadges.php'));
     }
 } else {

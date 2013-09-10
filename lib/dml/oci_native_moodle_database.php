@@ -51,8 +51,6 @@ class oci_native_moodle_database extends moodle_database {
     private $last_error_reporting;
     /** @var To store unique_session_id. Needed for temp tables unique naming.*/
     private $unique_session_id;
-    /** @var To cache locks support along the connection life.*/
-    private $oci_package_installed = null;
 
     /**
      * Detects if all needed PHP stuff installed.
@@ -112,24 +110,12 @@ class oci_native_moodle_database extends moodle_database {
     }
 
     /**
-     * Returns localised database description
-     * Note: can be used before connect()
-     * @return string
-     */
-    public function get_configuration_hints() {
-        return get_string('databasesettingssub_oci', 'install');
-    }
-
-    /**
      * Diagnose database and tables, this function is used
      * to verify database and driver settings, db engine types, etc.
      *
      * @return string null means everything ok, string means problem found.
      */
     public function diagnose() {
-        if (!$this->oci_package_installed()) {
-            return 'Oracle PL/SQL Moodle support packages are not installed! Database administrator has to execute /lib/dml/oci_native_moodle_package.sql script.';
-        }
         return null;
     }
 
@@ -201,6 +187,19 @@ class oci_native_moodle_database extends moodle_database {
                 $dberr = $e['message'];
             }
             throw new dml_connection_exception($dberr);
+        }
+
+        // Make sure moodle package is installed - now required.
+        if (!$this->oci_package_installed()) {
+            try {
+                $this->attempt_oci_package_install();
+            } catch (Exception $e) {
+                // Ignore problems, only the result counts,
+                // admins have to fix it manually if necessary.
+            }
+            if (!$this->oci_package_installed()) {
+                throw new dml_exception('dbdriverproblem', 'Oracle PL/SQL Moodle support package MOODLELIB is not installed! Database administrator has to execute /lib/dml/oci_native_moodle_package.sql script.');
+            }
         }
 
         // get unique session id, to be used later for temp tables stuff
@@ -469,15 +468,20 @@ class oci_native_moodle_database extends moodle_database {
      * @return array array of database_column_info objects indexed with column names
      */
     public function get_columns($table, $usecache=true) {
-        if ($usecache and isset($this->columns[$table])) {
-            return $this->columns[$table];
+
+        if ($usecache) {
+            $properties = array('dbfamily' => $this->get_dbfamily(), 'settings' => $this->get_settings_hash());
+            $cache = cache::make('core', 'databasemeta', $properties);
+            if ($data = $cache->get($table)) {
+                return $data;
+            }
         }
 
         if (!$table) { // table not specified, return empty array directly
             return array();
         }
 
-        $this->columns[$table] = array();
+        $structure = array();
 
         // We give precedence to CHAR_LENGTH for VARCHAR2 columns over WIDTH because the former is always
         // BYTE based and, for cross-db operations, we want CHAR based results. See MDL-29415
@@ -656,10 +660,14 @@ class oci_native_moodle_database extends moodle_database {
                 $info->meta_type     = '?';
             }
 
-            $this->columns[$table][$info->name] = new database_column_info($info);
+            $structure[$info->name] = new database_column_info($info);
         }
 
-        return $this->columns[$table];
+        if ($usecache) {
+            $result = $cache->set($table, $structure);
+        }
+
+        return $structure;
     }
 
     /**
@@ -1467,21 +1475,11 @@ class oci_native_moodle_database extends moodle_database {
     }
 
     public function sql_bitor($int1, $int2) {
-        // Use the MOODLELIB package if available
-        if ($this->oci_package_installed()) {
-            return 'MOODLELIB.BITOR(' . $int1 . ', ' . $int2 . ')';
-        }
-        // fallback to PHP bool operations, can break if using placeholders
-        return '((' . $int1 . ') + (' . $int2 . ') - ' . $this->sql_bitand($int1, $int2) . ')';
+        return 'MOODLELIB.BITOR(' . $int1 . ', ' . $int2 . ')';
     }
 
     public function sql_bitxor($int1, $int2) {
-        // Use the MOODLELIB package if available
-        if ($this->oci_package_installed()) {
-            return 'MOODLELIB.BITXOR(' . $int1 . ', ' . $int2 . ')';
-        }
-        // fallback to PHP bool operations, can break if using placeholders
-        return '(' . $this->sql_bitor($int1, $int2) . ' - ' . $this->sql_bitand($int1, $int2) . ')';
+        return 'MOODLELIB.BITXOR(' . $int1 . ', ' . $int2 . ')';
     }
 
     /**
@@ -1573,6 +1571,72 @@ class oci_native_moodle_database extends moodle_database {
     }
 
     /**
+     * Constructs 'IN()' or '=' sql fragment
+     *
+     * Method overriding {@link moodle_database::get_in_or_equal} to be able to get
+     * more than 1000 elements working, to avoid ORA-01795. We use a pivoting technique
+     * to be able to transform the params into virtual rows, so the original IN()
+     * expression gets transformed into a subquery. Once more, be noted that we shouldn't
+     * be using ever get_in_or_equal() with such number of parameters (proper subquery and/or
+     * chunking should be used instead).
+     *
+     * @param mixed $items A single value or array of values for the expression.
+     * @param int $type Parameter bounding type : SQL_PARAMS_QM or SQL_PARAMS_NAMED.
+     * @param string $prefix Named parameter placeholder prefix (a unique counter value is appended to each parameter name).
+     * @param bool $equal True means we want to equate to the constructed expression, false means we don't want to equate to it.
+     * @param mixed $onemptyitems This defines the behavior when the array of items provided is empty. Defaults to false,
+     *              meaning throw exceptions. Other values will become part of the returned SQL fragment.
+     * @throws coding_exception | dml_exception
+     * @return array A list containing the constructed sql fragment and an array of parameters.
+     */
+    public function get_in_or_equal($items, $type=SQL_PARAMS_QM, $prefix='param', $equal=true, $onemptyitems=false) {
+        list($sql, $params) = parent::get_in_or_equal($items, $type, $prefix,  $equal, $onemptyitems);
+
+        // Less than 1000 elements, nothing to do.
+        if (count($params) < 1000) {
+            return array($sql, $params); // Return unmodified.
+        }
+
+        // Extract the interesting parts of the sql to rewrite.
+        if (preg_match('!(^.*IN \()([^\)]*)(.*)$!', $sql, $matches) === false) {
+            return array($sql, $params); // Return unmodified.
+        }
+
+        $instart = $matches[1];
+        $insql = $matches[2];
+        $inend = $matches[3];
+        $newsql = '';
+
+        // Some basic verification about the matching going ok.
+        $insqlarr = explode(',', $insql);
+        if (count($insqlarr) !== count($params)) {
+            return array($sql, $params); // Return unmodified.
+        }
+
+        // Arrived here, we need to chunk and pivot the params, building a new sql (params remain the same).
+        $addunionclause = false;
+        while ($chunk = array_splice($insqlarr, 0, 125)) { // Each chunk will handle up to 125 (+125 +1) elements (DECODE max is 255).
+            $chunksize = count($chunk);
+            if ($addunionclause) {
+                $newsql .= "\n    UNION ALL";
+            }
+            $newsql .= "\n        SELECT DECODE(pivot";
+            $counter = 1;
+            foreach ($chunk as $element) {
+                $newsql .= ",\n            {$counter}, " . trim($element);
+                $counter++;
+            }
+            $newsql .= ")";
+            $newsql .= "\n        FROM dual";
+            $newsql .= "\n        CROSS JOIN (SELECT LEVEL AS pivot FROM dual CONNECT BY LEVEL <= {$chunksize})";
+            $addunionclause = true;
+        }
+
+        // Rebuild the complete IN() clause and return it.
+        return array($instart . $newsql . $inend, $params);
+    }
+
+    /**
      * Mega hacky magic to work around crazy Oracle NULL concats.
      * @param array $args
      * @return string
@@ -1628,9 +1692,6 @@ class oci_native_moodle_database extends moodle_database {
      * @return bool
      */
     protected function oci_package_installed() {
-        if (isset($this->oci_package_installed)) { // Use cached value if available.
-            return $this->oci_package_installed;
-        }
         $sql = "SELECT 1
                 FROM user_objects
                 WHERE object_type = 'PACKAGE BODY'
@@ -1643,8 +1704,22 @@ class oci_native_moodle_database extends moodle_database {
         $records = null;
         oci_fetch_all($stmt, $records, 0, -1, OCI_FETCHSTATEMENT_BY_ROW);
         oci_free_statement($stmt);
-        $this->oci_package_installed = isset($records[0]) && reset($records[0]) ? true : false;
-        return $this->oci_package_installed;
+        return isset($records[0]) && reset($records[0]) ? true : false;
+    }
+
+    /**
+     * Try to add required moodle package into oracle server.
+     */
+    protected function attempt_oci_package_install() {
+        $sqls = file_get_contents(__DIR__.'/oci_native_moodle_package.sql');
+        $sqls = preg_split('/^\/$/sm', $sqls);
+        foreach ($sqls as $sql) {
+            $sql = trim($sql);
+            if ($sql === '' or $sql === 'SHOW ERRORS') {
+                continue;
+            }
+            $this->change_database_structure($sql);
+        }
     }
 
     /**
@@ -1654,9 +1729,6 @@ class oci_native_moodle_database extends moodle_database {
      * @return void
      */
     public function get_session_lock($rowid, $timeout) {
-        if (!$this->oci_package_installed()) {
-            return;
-        }
         parent::get_session_lock($rowid, $timeout);
 
         $fullname = $this->dbname.'-'.$this->prefix.'-session-'.$rowid;
@@ -1674,9 +1746,6 @@ class oci_native_moodle_database extends moodle_database {
     }
 
     public function release_session_lock($rowid) {
-        if (!$this->oci_package_installed()) {
-            return;
-        }
         if (!$this->used_for_db_sessions) {
             return;
         }

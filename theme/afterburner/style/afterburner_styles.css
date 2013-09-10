@@ -224,20 +224,22 @@ textarea {
 /*
 Courses and categories lists
 ----------------------------*/
-.coursebox .summary {
+.coursebox .content .summary,
+.coursebox .content .coursecat {
     width: 100%;
     float: left;
 }
-.coursebox .name,
-.coursebox .summary,
-.coursebox .coursecat,
-.coursebox .teachers,
-.course_category_tree .paging {
-    margin: 5px;
+.coursebox > .info > .name {
+    width: auto;
 }
-.course_category_tree .category > .info .name {
-    padding-left: 20px;
-    margin: 5px;
+.coursebox .content .teachers,
+.coursebox .content .courseimage,
+.coursebox .content .coursefile {
+    width: 100%;
+}
+#page-course-index-category .generalbox.info {
+    margin: 1em 0;
+    padding: 0 5px;
 }
 /*
 Course Section Topic & Weekly

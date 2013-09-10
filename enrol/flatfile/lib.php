@@ -138,10 +138,11 @@ class enrol_flatfile_plugin extends enrol_plugin {
      * @param int $timestart 0 means unknown
      * @param int $timeend 0 means forever
      * @param int $status default to ENROL_USER_ACTIVE for new enrolments, no change by default in updates
+     * @param bool $recovergrades restore grade history
      * @return void
      */
-    public function enrol_user(stdClass $instance, $userid, $roleid = null, $timestart = 0, $timeend = 0, $status = null) {
-        parent::enrol_user($instance, $userid, null, $timestart, $timeend, $status);
+    public function enrol_user(stdClass $instance, $userid, $roleid = null, $timestart = 0, $timeend = 0, $status = null, $recovergrades = null) {
+        parent::enrol_user($instance, $userid, null, $timestart, $timeend, $status, $recovergrades);
         if ($roleid) {
             $context = context_course::instance($instance->courseid, MUST_EXIST);
             role_assign($roleid, $userid, $context->id, 'enrol_'.$this->get_name(), $instance->id);
@@ -251,7 +252,7 @@ class enrol_flatfile_plugin extends enrol_plugin {
 
             $rolemap = $this->get_role_map($trace);
 
-            $content = textlib::convert($content, $this->get_config('encoding', 'utf-8'), 'utf-8');
+            $content = core_text::convert($content, $this->get_config('encoding', 'utf-8'), 'utf-8');
             $content = str_replace("\r", '', $content);
             $content = explode("\n", $content);
 
@@ -277,8 +278,8 @@ class enrol_flatfile_plugin extends enrol_plugin {
                     continue;
                 }
 
-                $fields[0] = trim(textlib::strtolower($fields[0]));
-                $fields[1] = trim(textlib::strtolower($fields[1]));
+                $fields[0] = trim(core_text::strtolower($fields[0]));
+                $fields[1] = trim(core_text::strtolower($fields[1]));
                 $fields[2] = trim($fields[2]);
                 $fields[3] = trim($fields[3]);
                 $fields[4] = isset($fields[4]) ? (int)trim($fields[4]) : 0;
@@ -310,8 +311,8 @@ class enrol_flatfile_plugin extends enrol_plugin {
                 }
                 $roleid = $rolemap[$fields[1]];
 
-                if (!$user = $DB->get_record("user", array("idnumber"=>$fields[2]))) {
-                    $trace->output("Unknown user idnumber in field 3 - ignoring line $line", 1);
+                if (empty($fields[2]) or !$user = $DB->get_record("user", array("idnumber"=>$fields[2], 'deleted'=>0))) {
+                    $trace->output("Unknown user idnumber or deleted user in field 3 - ignoring line $line", 1);
                     continue;
                 }
 
@@ -663,7 +664,7 @@ class enrol_flatfile_plugin extends enrol_plugin {
         $roles = $DB->get_records('role', null, '', 'id, name, shortname');
         foreach ($roles as $id=>$role) {
             $alias = $this->get_config('map_'.$id, $role->shortname, '');
-            $alias = trim(textlib::strtolower($alias));
+            $alias = trim(core_text::strtolower($alias));
             if ($alias === '') {
                 // Either not configured yet or somebody wants to skip these intentionally.
                 continue;

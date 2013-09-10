@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,7 +17,7 @@
 /**
  * This file is responsible for serving of yui images
  *
- * @package   moodlecore
+ * @package   core
  * @copyright 2009 Petr Skoda (skodak)  {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -42,17 +41,11 @@ $etag = sha1($path);
 $parts = explode('/', $path);
 $version = array_shift($parts);
 if ($version == 'moodle' && count($parts) >= 3) {
-    if (!defined('ABORT_AFTER_CONFIG_CANCEL')) {
-        define('ABORT_AFTER_CONFIG_CANCEL', true);
-        define('NO_UPGRADE_CHECK', true);
-        define('NO_MOODLE_COOKIES', true);
-        require($CFG->libdir.'/setup.php');
-    }
     $frankenstyle = array_shift($parts);
     $module = array_shift($parts);
     $image = array_pop($parts);
     $subdir = join('/', $parts);
-    $dir = get_component_directory($frankenstyle);
+    $dir = core_component::get_component_directory($frankenstyle);
 
     // For shifted YUI modules, we need the YUI module name in frankenstyle format.
     $frankenstylemodulename = join('-', array($version, $frankenstyle, $module));
@@ -104,7 +97,7 @@ if (strpos($path, '/-1/') === false and (!empty($_SERVER['HTTP_IF_NONE_MATCH']) 
     header('Expires: '. gmdate('D, d M Y H:i:s', time() + $lifetime) .' GMT');
     header('Cache-Control: public, max-age='.$lifetime);
     header('Content-Type: '.$mimetype);
-    header('Etag: '.$etag);
+    header('Etag: "'.$etag.'"');
     die;
 }
 
@@ -125,7 +118,7 @@ function yui_image_cached($imagepath, $imagename, $mimetype, $etag) {
     header('Accept-Ranges: none');
     header('Content-Type: '.$mimetype);
     header('Content-Length: '.filesize($imagepath));
-    header('Etag: '.$etag);
+    header('Etag: "'.$etag.'"');
 
     if (xsendfile($imagepath)) {
         die;

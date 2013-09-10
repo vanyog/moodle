@@ -29,13 +29,24 @@
 $definitions = array(
 
     // Used to store processed lang files.
-    // The keys used are the component of the string file.
+    // The keys used are the revision, lang and component of the string file.
+    // The persistent max size has been based upon student access of the site.
+    // NOTE: this data may be safely stored in local caches on cluster nodes.
     'string' => array(
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,
         'simpledata' => true,
         'persistent' => true,
-        'persistentmaxsize' => 3
+        'persistentmaxsize' => 30
+    ),
+
+    // Used to store cache of all available translations.
+    // NOTE: this data may be safely stored in local caches on cluster nodes.
+    'langmenu' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'persistent' => true,
     ),
 
     // Used to store database meta information.
@@ -48,7 +59,7 @@ $definitions = array(
             'dbfamily'
         ),
         'persistent' => true,
-        'persistentmaxsize' => 2
+        'persistentmaxsize' => 15
     ),
 
     // Event invalidation cache.
@@ -78,8 +89,9 @@ $definitions = array(
 
     // HTML Purifier cache
     // This caches the html purifier cleaned text. This is done because the text is usually cleaned once for every user
-    // and context combo. Text caching handles caching for the combonation, this cache is responsible for caching the
+    // and context combo. Text caching handles caching for the combination, this cache is responsible for caching the
     // cleaned text which is shareable.
+    // NOTE: this data may be safely stored in local caches on cluster nodes.
     'htmlpurifier' => array(
         'mode' => cache_store::MODE_APPLICATION,
     ),
@@ -118,25 +130,10 @@ $definitions = array(
     // This stores the YUI module metadata for Shifted YUI modules in Moodle.
     'yuimodules' => array(
         'mode' => cache_store::MODE_APPLICATION,
-        'persistent' => true,
     ),
 
-    // Cache for the list of known plugin and subplugin types - {@see get_plugin_types()}.
-    // Contains two arrays of (string)pluginname => (string)location. The first array with
-    // the key 0 contains locations relative to $CFG->dirroot. The second array with the
-    // key 1 contains absolute paths.
-    'plugintypes' => array(
-        'mode' => cache_store::MODE_APPLICATION,
-        'simplekeys' => true, // 0 or 1 depending on the requested location type.
-        'simpledata' => true, // Array of strings.
-        'persistent' => true, // Likely there will be a couple of calls to this.
-        'persistmaxsize' => 2, // Both arrays should stay loaded in memory.
-    ),
-
-    // Cache for the list of installed plugins - {@see get_plugin_list()}.
-    // The key consists of the plugin type string (e.g. mod, block, enrol etc).
-    // The value is an associative array of plugin name => plugin location.
-    'pluginlist' => array(
+    // Cache for the list of event observers.
+    'observers' => array(
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,
         'simpledata' => true,
@@ -225,9 +222,21 @@ $definitions = array(
             'changesincoursecat',
         ),
     ),
+    // Cache course contacts for the courses
+    'coursecontacts' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'persistent' => true,
+        'simplekeys' => true,
+    ),
     // Used to store data for repositories to avoid repetitive DB queries within one request
     'repositories' => array(
         'mode' => cache_store::MODE_REQUEST,
         'persistent' => true,
+    ),
+    // Used to store external badges.
+    'externalbadges' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'ttl' => 3600,
     ),
 );

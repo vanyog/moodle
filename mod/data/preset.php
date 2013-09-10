@@ -103,6 +103,8 @@ if (!$form_export->is_submitted()) {
     $currenttab = 'presets';
     $currentgroup = groups_get_activity_group($cm);
     $groupmode = groups_get_activity_groupmode($cm);
+    echo $OUTPUT->box(format_module_intro('data', $data, $cm->id), 'generalbox', 'intro');
+
     include('tabs.php');
 }
 
@@ -176,7 +178,7 @@ if (optional_param('sesskey', false, PARAM_BOOL) && confirm_sesskey()) {
         echo $OUTPUT->footer();
         exit(0);
     } else {
-        $action = optional_param('action', null, PARAM_ALPHA);
+        $action = optional_param('action', null, PARAM_ALPHANUM);
         $fullname = optional_param('fullname', '', PARAM_PATH); // directory the preset is in
         //
         // find out preset owner userid and shortname

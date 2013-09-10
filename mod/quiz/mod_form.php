@@ -69,6 +69,7 @@ class mod_quiz_mod_form extends moodleform_mod {
             $mform->setType('name', PARAM_CLEANHTML);
         }
         $mform->addRule('name', null, 'required', null, 'client');
+        $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
 
         // Introduction.
         $this->add_intro_editor(false, get_string('introduction', 'quiz'));
@@ -249,8 +250,10 @@ class mod_quiz_mod_form extends moodleform_mod {
         $mform->addElement('header', 'display', get_string('display', 'form'));
 
         // Show user picture.
-        $mform->addElement('selectyesno', 'showuserpicture',
-                get_string('showuserpicture', 'quiz'));
+        $mform->addElement('select', 'showuserpicture', get_string('showuserpicture', 'quiz'), array(
+                QUIZ_SHOWIMAGE_NONE => get_string('shownoimage', 'quiz'),
+                QUIZ_SHOWIMAGE_SMALL => get_string('showsmallimage', 'quiz'),
+                QUIZ_SHOWIMAGE_LARGE => get_string('showlargeimage', 'quiz')));
         $mform->addHelpButton('showuserpicture', 'showuserpicture', 'quiz');
         $mform->setAdvanced('showuserpicture', $quizconfig->showuserpicture_adv);
         $mform->setDefault('showuserpicture', $quizconfig->showuserpicture);
@@ -347,7 +350,7 @@ class mod_quiz_mod_form extends moodleform_mod {
         $repeatedoptions = array();
         $repeatarray[] = $mform->createElement('editor', 'feedbacktext',
                 get_string('feedback', 'quiz'), array('rows' => 3), array('maxfiles' => EDITOR_UNLIMITED_FILES,
-                        'noclean' => true, 'context' => $this->context, 'collapsed' => 1));
+                        'noclean' => true, 'context' => $this->context));
         $repeatarray[] = $mform->createElement('text', 'feedbackboundaries',
                 get_string('gradeboundary', 'quiz'), array('size' => 10));
         $repeatedoptions['feedbacktext']['type'] = PARAM_RAW;
@@ -369,7 +372,7 @@ class mod_quiz_mod_form extends moodleform_mod {
         $mform->insertElementBefore($mform->createElement('editor',
                 "feedbacktext[$nextel]", get_string('feedback', 'quiz'), array('rows' => 3),
                 array('maxfiles' => EDITOR_UNLIMITED_FILES, 'noclean' => true,
-                      'context' => $this->context, 'collapsed' => 1)),
+                      'context' => $this->context)),
                 'boundary_add_fields');
         $mform->insertElementBefore($mform->createElement('static',
                 'gradeboundarystatic2', get_string('gradeboundary', 'quiz'), '0%'),
@@ -574,6 +577,9 @@ class mod_quiz_mod_form extends moodleform_mod {
                         get_string('feedbackerrorjunkinfeedback', 'quiz', $i + 1);
             }
         }
+
+        // Any other rule plugins.
+        $errors = quiz_access_manager::validate_settings_form_fields($errors, $data, $files, $this);
 
         return $errors;
     }
