@@ -39,7 +39,7 @@ defined('MOODLE_INTERNAL') || die();
 //   <span lang="XX" class="multilang">one lang</span><span lang="YY" class="multilang">another language</span>
 //
 // New version by Vanyo Georgiev <info@vanyog.com> 6-April-2013.
-// In this version a language block is a serie of identical html tags with lan="XX" atributes
+// In this version a language block is a serie of identical html tags with lang="XX" atributes
 // for different languages. Only the tag for the current language,
 // or parent language or the first tag in the series is shown.
 // The old syntax with <lang> tags is valid too.
