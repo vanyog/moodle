@@ -48,6 +48,7 @@ $PAGE->set_url($quizobj->view_url());
 // Check login and sesskey.
 require_login($quizobj->get_course(), false, $quizobj->get_cm());
 require_sesskey();
+$PAGE->set_heading($quizobj->get_course()->fullname);
 
 // If no questions have been set up yet redirect to edit.php or display an error.
 if (!$quizobj->has_questions()) {
@@ -92,9 +93,7 @@ if ($lastattempt && ($lastattempt->state == quiz_attempt::IN_PROGRESS ||
     $quizobj->create_attempt_object($lastattempt)->handle_if_time_expired($timenow, true);
 
     // And, if the attempt is now no longer in progress, redirect to the appropriate place.
-    if ($lastattempt->state == quiz_attempt::OVERDUE) {
-        redirect($quizobj->summary_url($lastattempt->id));
-    } else if ($lastattempt->state != quiz_attempt::IN_PROGRESS) {
+    if ($lastattempt->state == quiz_attempt::ABANDONED || $lastattempt->state == quiz_attempt::FINISHED) {
         redirect($quizobj->review_url($lastattempt->id));
     }
 
@@ -126,8 +125,8 @@ if ($lastattempt && ($lastattempt->state == quiz_attempt::IN_PROGRESS ||
 }
 
 // Check access.
-$output = $PAGE->get_renderer('mod_quiz');
 if (!$quizobj->is_preview_user() && $messages) {
+    $output = $PAGE->get_renderer('mod_quiz');
     print_error('attempterror', 'quiz', $quizobj->view_url(),
             $output->access_messages($messages));
 }
@@ -138,14 +137,15 @@ if ($accessmanager->is_preflight_check_required($currentattemptid)) {
             $quizobj->start_attempt_url($page), $currentattemptid);
 
     if ($mform->is_cancelled()) {
-        $accessmanager->back_to_view_page($output);
+        $accessmanager->back_to_view_page($PAGE->get_renderer('mod_quiz'));
 
     } else if (!$mform->get_data()) {
 
         // Form not submitted successfully, re-display it and stop.
         $PAGE->set_url($quizobj->start_attempt_url($page));
-        $PAGE->set_title(format_string($quizobj->get_quiz_name()));
+        $PAGE->set_title($quizobj->get_quiz_name());
         $accessmanager->setup_attempt_page($PAGE);
+        $output = $PAGE->get_renderer('mod_quiz');
         if (empty($quizobj->get_quiz()->showblocks)) {
             $PAGE->blocks->show_only_fake_blocks();
         }
@@ -158,7 +158,11 @@ if ($accessmanager->is_preflight_check_required($currentattemptid)) {
     $accessmanager->notify_preflight_check_passed($currentattemptid);
 }
 if ($currentattemptid) {
-    redirect($quizobj->attempt_url($currentattemptid, $page));
+    if ($lastattempt->state == quiz_attempt::OVERDUE) {
+        redirect($quizobj->summary_url($lastattempt->id));
+    } else {
+        redirect($quizobj->attempt_url($currentattemptid, $page));
+    }
 }
 
 // Delete any previous preview attempts belonging to this user.
@@ -180,7 +184,6 @@ if (!($quizobj->get_quiz()->attemptonlast && $lastattempt)) {
 $transaction = $DB->start_delegated_transaction();
 
 $attempt = quiz_attempt_save_started($quizobj, $quba, $attempt);
-quiz_fire_attempt_started_event($attempt, $quizobj);
 
 $transaction->allow_commit();
 

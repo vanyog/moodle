@@ -29,6 +29,7 @@ define("MAX_USERS_TO_LIST_PER_ROLE", 10);
 
 $contextid = required_param('contextid', PARAM_INT);
 $roleid    = optional_param('roleid', 0, PARAM_INT);
+$returnto  = optional_param('return', null, PARAM_ALPHANUMEXT);
 
 list($context, $course, $cm) = get_context_info_array($contextid);
 
@@ -134,6 +135,11 @@ if ($roleid) {
     }
 }
 
+if (!empty($user) && ($user->id != $USER->id)) {
+    $PAGE->navigation->extend_for_user($user);
+    $PAGE->navbar->includesettingsbase = true;
+}
+
 $PAGE->set_pagelayout('admin');
 $PAGE->set_title($title);
 
@@ -148,12 +154,11 @@ switch ($context->contextlevel) {
         $showroles = 1;
         break;
     case CONTEXT_COURSECAT:
-        $PAGE->set_heading("$SITE->fullname: ".get_string("categories"));
+        $PAGE->set_heading($SITE->fullname);
         break;
     case CONTEXT_COURSE:
         if ($isfrontpage) {
-            require_once($CFG->libdir.'/adminlib.php');
-            admin_externalpage_setup('frontpageroles', '', array('contextid' => $contextid, 'roleid' => $roleid));
+            $PAGE->set_heading(get_string('frontpage', 'admin'));
         } else {
             $PAGE->set_heading($course->fullname);
         }
@@ -176,11 +181,14 @@ if ($roleid) {
     // Show UI for assigning a particular role to users.
     // Print a warning if we are assigning system roles.
     if ($context->contextlevel == CONTEXT_SYSTEM) {
-        echo $OUTPUT->box(get_string('globalroleswarning', 'core_role'));
+        echo $OUTPUT->notification(get_string('globalroleswarning', 'core_role'));
     }
 
     // Print the form.
     $assignurl = new moodle_url($PAGE->url, array('roleid'=>$roleid));
+    if ($returnto !== null) {
+        $assignurl->param('return', $returnto);
+    }
 ?>
 <form id="assignform" method="post" action="<?php echo $assignurl ?>"><div>
   <input type="hidden" name="sesskey" value="<?php echo sesskey() ?>" />
@@ -225,10 +233,17 @@ if ($roleid) {
     // Print a form to swap roles, and a link back to the all roles list.
     echo '<div class="backlink">';
 
-    $select = new single_select($PAGE->url, 'roleid', $nameswithcounts, $roleid, null);
+    $newroleurl = new moodle_url($PAGE->url);
+    if ($returnto !== null) {
+        $newroleurl->param('return', $returnto);
+    }
+    $select = new single_select($newroleurl, 'roleid', $nameswithcounts, $roleid, null);
     $select->label = get_string('assignanotherrole', 'core_role');
     echo $OUTPUT->render($select);
     $backurl = new moodle_url('/admin/roles/assign.php', array('contextid' => $contextid));
+    if ($returnto !== null) {
+        $backurl->param('return', $returnto);
+    }
     echo '<p><a href="' . $backurl->out() . '">' . get_string('backtoallroles', 'core_role') . '</a></p>';
     echo '</div>';
 
@@ -241,7 +256,7 @@ if ($roleid) {
 
     // Print a warning if we are assigning system roles.
     if ($context->contextlevel == CONTEXT_SYSTEM) {
-        echo $OUTPUT->box(get_string('globalroleswarning', 'core_role'));
+        echo $OUTPUT->notification(get_string('globalroleswarning', 'core_role'));
     }
 
     // Print instruction.
@@ -255,7 +270,8 @@ if ($roleid) {
     foreach ($assignableroles as $roleid => $notused) {
         $roleusers = '';
         if (0 < $assigncounts[$roleid] && $assigncounts[$roleid] <= MAX_USERS_TO_LIST_PER_ROLE) {
-            $roleusers = get_role_users($roleid, $context, false, 'u.id, u.firstname, u.lastname');
+            $userfields = 'u.id, u.username, ' . get_all_user_name_fields(true, 'u');
+            $roleusers = get_role_users($roleid, $context, false, $userfields);
             if (!empty($roleusers)) {
                 $strroleusers = array();
                 foreach ($roleusers as $user) {
@@ -266,6 +282,9 @@ if ($roleid) {
             }
         } else if ($assigncounts[$roleid] > MAX_USERS_TO_LIST_PER_ROLE) {
             $assignurl = new moodle_url($PAGE->url, array('roleid'=>$roleid));
+            if ($returnto !== null) {
+                $assignurl->param('return', $returnto);
+            }
             $roleholdernames[$roleid] = '<a href="'.$assignurl.'">'.$strmorethanmax.'</a>';
         } else {
             $roleholdernames[$roleid] = '';
@@ -286,6 +305,9 @@ if ($roleid) {
     foreach ($assignableroles as $roleid => $rolename) {
         $description = format_string($DB->get_field('role', 'description', array('id'=>$roleid)));
         $assignurl = new moodle_url($PAGE->url, array('roleid'=>$roleid));
+        if ($returnto !== null) {
+            $assignurl->param('return', $returnto);
+        }
         $row = array('<a href="'.$assignurl.'">'.$rolename.'</a>',
                 $description, $assigncounts[$roleid]);
         if ($showroleholders) {
@@ -297,8 +319,15 @@ if ($roleid) {
     echo html_writer::table($table);
 
     if ($context->contextlevel > CONTEXT_USER) {
+
+        if ($context->contextlevel === CONTEXT_COURSECAT && $returnto === 'management') {
+            $url = new moodle_url('/course/management.php', array('categoryid' => $context->instanceid));
+        } else {
+            $url = $context->get_url();
+        }
+
         echo html_writer::start_tag('div', array('class'=>'backlink'));
-        echo html_writer::tag('a', get_string('backto', '', $contextname), array('href'=>$context->get_url()));
+        echo html_writer::tag('a', get_string('backto', '', $contextname), array('href' => $url));
         echo html_writer::end_tag('div');
     }
 }

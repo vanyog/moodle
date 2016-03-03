@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -16,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @package moodlecore
+ * @package block_glossary_random
  * @subpackage backup-moodle2
  * @copyright 2003 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -63,9 +62,16 @@ class restore_glossary_random_block_task extends restore_block_task {
             if (!empty($config->glossary)) {
                 // Get glossary mapping and replace it in config
                 if ($glossarymap = restore_dbops::get_backup_ids_record($this->get_restoreid(), 'glossary', $config->glossary)) {
-                    $config->glossary = $glossarymap->newitemid;
+                    $mappedglossary = $DB->get_record('glossary', array('id' => $glossarymap->newitemid),
+                        'id,course,globalglossary', MUST_EXIST);
+                    $config->glossary = $mappedglossary->id;
+                    $config->courseid = $mappedglossary->course;
+                    $config->globalglossary = $mappedglossary->globalglossary;
                     $configdata = base64_encode(serialize($config));
                     $DB->set_field('block_instances', 'configdata', $configdata, array('id' => $blockid));
+                } else {
+                    // The block refers to a glossary not present in the backup file.
+                    $DB->set_field('block_instances', 'configdata', '', array('id' => $blockid));
                 }
             }
         }

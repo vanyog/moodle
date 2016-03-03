@@ -34,14 +34,33 @@ class tool_generator_maketestcourse_testcase extends advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
 
+        $expectedshortname = 'TOOL_MAKELARGECOURSE_XS';
+        $expectedfullname = 'Ridiculous fullname';
+        $expectedsummary = 'who even knows what this is about';
+
         // Create the XS course.
-        $backend = new tool_generator_course_backend('TOOL_MAKELARGECOURSE_XS', 0, false, false);
+        $backend = new tool_generator_course_backend(
+            $expectedshortname,
+            0,
+            false,
+            false,
+            false,
+            $expectedfullname,
+            $expectedsummary
+        );
         $courseid = $backend->make();
 
         // Get course details.
         $course = get_course($courseid);
         $context = context_course::instance($courseid);
         $modinfo = get_fast_modinfo($course);
+
+        // Check course names.
+        $this->assertEquals($expectedshortname, $course->shortname);
+        $this->assertEquals($expectedfullname, $course->fullname);
+
+        // Check course summary.
+        $this->assertEquals($expectedsummary, $course->summary);
 
         // Check sections (just section 0 plus one other).
         $this->assertEquals(2, count($modinfo->get_section_info_all()));
@@ -112,13 +131,12 @@ class tool_generator_maketestcourse_testcase extends advanced_testcase {
      * Creates an small test course with fixed data set and checks the used sections and users.
      */
     public function test_fixed_data_set() {
-        global $DB;
 
         $this->resetAfterTest();
         $this->setAdminUser();
 
         // Create the S course (more sections and activities than XS).
-        $backend = new tool_generator_course_backend('TOOL_S_COURSE_1', 1, true, false);
+        $backend = new tool_generator_course_backend('TOOL_S_COURSE_1', 1, true, false, false);
         $courseid = $backend->make();
 
         // Get course details.
@@ -127,19 +145,17 @@ class tool_generator_maketestcourse_testcase extends advanced_testcase {
 
         // Check module instances belongs to section 1.
         $instances = $modinfo->get_instances_of('page');
-        $npageinstances = count($instances);
         foreach ($instances as $instance) {
             $this->assertEquals(1, $instance->sectionnum);
         }
 
         // Users that started discussions are the same.
         $forums = $modinfo->get_instances_of('forum');
-        $nforuminstances = count($forums);
         $discussions = forum_get_discussions(reset($forums), 'd.timemodified ASC');
         $lastusernumber = 0;
         $discussionstarters = array();
         foreach ($discussions as $discussion) {
-            $usernumber = intval($discussion->lastname);
+            $usernumber = core_user::get_user($discussion->userid, 'id, idnumber')->idnumber;
 
             // Checks that the users are odd numbers.
             $this->assertEquals(1, $usernumber % 2);
@@ -148,6 +164,59 @@ class tool_generator_maketestcourse_testcase extends advanced_testcase {
             $this->assertGreaterThan($lastusernumber, $usernumber);
             $lastusernumber = $usernumber;
             $discussionstarters[$discussion->userid] = $discussion->subject;
+        }
+
+    }
+
+    /**
+     * Creates a small test course specifying a maximum size and checks the generated files size is limited.
+     */
+    public function test_filesize_limit() {
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        // Limit.
+        $filesizelimit = 100;
+
+        // Create a limited XS course.
+        $backend = new tool_generator_course_backend('TOOL_XS_LIMITED', 0, false, $filesizelimit, false);
+        $courseid = $backend->make();
+
+        $course = get_course($courseid);
+        $modinfo = get_fast_modinfo($course);
+
+        // Check there are small files.
+        $fs = get_file_storage();
+        $resources = $modinfo->get_instances_of('resource');
+        foreach ($resources as $resource) {
+            $resourcecontext = context_module::instance($resource->id);
+            $files = $fs->get_area_files($resourcecontext->id, 'mod_resource', 'content', false, 'filename', false);
+            foreach ($files as $file) {
+                if ($file->get_mimetype() == 'application/octet-stream') {
+                    $this->assertLessThanOrEqual($filesizelimit, $file->get_filesize());
+                }
+            }
+        }
+
+        // Create a non-limited XS course.
+        $backend = new tool_generator_course_backend('TOOL_XS_NOLIMITS', 0, false, false, false);
+        $courseid = $backend->make();
+
+        $course = get_course($courseid);
+        $modinfo = get_fast_modinfo($course);
+
+        // Check there are small files.
+        $fs = get_file_storage();
+        $resources = $modinfo->get_instances_of('resource');
+        foreach ($resources as $resource) {
+            $resourcecontext = context_module::instance($resource->id);
+            $files = $fs->get_area_files($resourcecontext->id, 'mod_resource', 'content', false, 'filename', false);
+            foreach ($files as $file) {
+                if ($file->get_mimetype() == 'application/octet-stream') {
+                    $this->assertGreaterThan($filesizelimit, (int)$file->get_filesize());
+                }
+            }
         }
 
     }

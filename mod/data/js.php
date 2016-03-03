@@ -20,7 +20,7 @@
  *
  * @copyright 2005 Martin Dougiamas  http://dougiamas.com
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @package mod-data
+ * @package mod_data
  */
 
 define('NO_MOODLE_COOKIES', true); // session not used here
@@ -38,7 +38,7 @@ if ($data = $DB->get_record('data', array('id'=>$d))) {
     header('Expires: ' . gmdate("D, d M Y H:i:s", time() + $lifetime) . ' GMT');
     header('Cache-control: max_age = '. $lifetime);
     header('Pragma: ');
-    header('Content-type: text/css; charset=utf-8');  // Correct MIME type
+    header('Content-type: application/javascript; charset=utf-8');  // Correct MIME type.
 
     echo $data->jstemplate;
 }

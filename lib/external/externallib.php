@@ -45,7 +45,7 @@ class core_external extends external_api {
      *
      * @param array $stringparams
      * @return object|string
-     * @since 2.4
+     * @since Moodle 2.4
      */
     public static function format_string_parameters($stringparams) {
         // Check if there are some string params.
@@ -108,11 +108,12 @@ class core_external extends external_api {
      * @return string
      * @since Moodle 2.4
      */
-    public static function get_string($stringid, $component = 'moodle', $stringparams = array()) {
+    public static function get_string($stringid, $component = 'moodle', $lang = null, $stringparams = array()) {
         $params = self::validate_parameters(self::get_string_parameters(),
-                      array('stringid'=>$stringid, 'component' => $component, 'stringparams' => $stringparams));
+                      array('stringid'=>$stringid, 'component' => $component, 'lang' => $lang, 'stringparams' => $stringparams));
 
-        return get_string($params['stringid'], $params['component'],
+        $stringmanager = get_string_manager();
+        return $stringmanager->get_string($params['stringid'], $params['component'],
             core_external::format_string_parameters($params['stringparams']), $params['lang']);
     }
 
@@ -163,11 +164,12 @@ class core_external extends external_api {
     public static function get_strings($strings) {
         $params = self::validate_parameters(self::get_strings_parameters(),
                       array('strings'=>$strings));
+        $stringmanager = get_string_manager();
 
         $translatedstrings = array();
         foreach($params['strings'] as $string) {
 
-            if (empty($string['lang'])) {
+            if (!empty($string['lang'])) {
                 $lang = $string['lang'];
             } else {
                 $lang = current_language();
@@ -177,7 +179,7 @@ class core_external extends external_api {
                 'stringid' => $string['stringid'],
                 'component' => $string['component'],
                 'lang' => $lang,
-                'string' => get_string($string['stringid'], $string['component'],
+                'string' => $stringmanager->get_string($string['stringid'], $string['component'],
                     core_external::format_string_parameters($string['stringparams']), $lang));
         }
 
@@ -257,5 +259,152 @@ class core_external extends external_api {
                 'stringid' => new external_value(PARAM_STRINGID, 'string id'),
                 'string' => new external_value(PARAM_RAW, 'translated string'))
             ));
+    }
+
+    /**
+     * Returns description of get_fragment parameters
+     *
+     * @return external_function_parameters
+     * @since Moodle 3.1
+     */
+    public static function get_fragment_parameters() {
+        return new external_function_parameters(
+            array(
+                'component' => new external_value(PARAM_COMPONENT, 'Component for the callback e.g. mod_assign'),
+                'callback' => new external_value(PARAM_ALPHANUMEXT, 'Name of the callback to execute'),
+                'contextid' => new external_value(PARAM_INT, 'Context ID that the fragment is from'),
+                'args' => new external_multiple_structure(
+                    new external_single_structure(
+                        array(
+                            'name' => new external_value(PARAM_ALPHANUMEXT, 'param name'),
+                            'value' => new external_value(PARAM_RAW, 'param value')
+                        )
+                    ), 'args for the callback are optional', VALUE_OPTIONAL
+                )
+            )
+        );
+    }
+
+    /**
+     * Get a HTML fragment for inserting into something. Initial use is for inserting mforms into
+     * a page using AJAX.
+     * This web service is designed to be called only via AJAX and not directly.
+     * Callbacks that are called by this web service are responsible for doing the appropriate security checks
+     * to access the information returned. This only does minimal validation on the context.
+     *
+     * @param string $component Name of the component.
+     * @param string $callback Function callback name.
+     * @param int $contextid Context ID this fragment is in.
+     * @param array $args optional arguments for the callback.
+     * @return array HTML and JavaScript fragments for insertion into stuff.
+     * @since Moodle 3.1
+     */
+    public static function get_fragment($component, $callback, $contextid, $args = null) {
+        global $OUTPUT, $PAGE;
+
+        $params = self::validate_parameters(self::get_fragment_parameters(),
+                array(
+                    'component' => $component,
+                    'callback' => $callback,
+                    'contextid' => $contextid,
+                    'args' => $args
+                )
+        );
+
+        // Reformat arguments into something less unwieldy.
+        $arguments = array();
+        foreach ($params['args'] as $paramargument) {
+            $arguments[$paramargument['name']] = $paramargument['value'];
+        }
+
+        $context = context::instance_by_id($contextid);
+        self::validate_context($context);
+
+        // Hack alert: Forcing bootstrap_renderer to initiate moodle page.
+        $OUTPUT->header();
+
+        // Overwriting page_requirements_manager with the fragment one so only JS included from
+        // this point is returned to the user.
+        $PAGE->start_collecting_javascript_requirements();
+        $data = component_callback($params['component'], 'output_fragment_' . $params['callback'], $arguments);
+        $jsfooter = $PAGE->requires->get_end_code();
+        $output = array('html' => $data, 'javascript' => $jsfooter);
+        return $output;
+    }
+
+    /**
+     * Returns description of get_fragment() result value
+     *
+     * @return array
+     * @since Moodle 3.1
+     */
+    public static function get_fragment_returns() {
+        return new external_single_structure(
+            array(
+                'html' => new external_value(PARAM_RAW, 'HTML fragment.'),
+                'javascript' => new external_value(PARAM_RAW, 'JavaScript fragment')
+            )
+        );
+    }
+
+    /**
+     * Parameters for function update_inplace_editable()
+     *
+     * @since Moodle 3.1
+     * @return external_function_parameters
+     */
+    public static function update_inplace_editable_parameters() {
+        return new external_function_parameters(
+            array(
+                'component' => new external_value(PARAM_COMPONENT, 'component responsible for the update', VALUE_REQUIRED),
+                'itemtype' => new external_value(PARAM_NOTAGS, 'type of the updated item inside the component', VALUE_REQUIRED),
+                'itemid' => new external_value(PARAM_INT, 'identifier of the updated item', VALUE_REQUIRED),
+                'value' => new external_value(PARAM_RAW, 'new value', VALUE_REQUIRED),
+            ));
+    }
+
+    /**
+     * Update any component's editable value assuming that component implements necessary callback
+     *
+     * @since Moodle 3.1
+     * @param string $component
+     * @param string $itemtype
+     * @param string $itemid
+     * @param string $value
+     */
+    public static function update_inplace_editable($component, $itemtype, $itemid, $value) {
+        global $PAGE;
+        // Validate and normalize parameters.
+        $params = self::validate_parameters(self::update_inplace_editable_parameters(),
+                      array('component' => $component, 'itemtype' => $itemtype, 'itemid' => $itemid, 'value' => $value));
+        if (!$functionname = component_callback_exists($component, 'inplace_editable')) {
+            throw new \moodle_exception('inplaceeditableerror');
+        }
+        $tmpl = component_callback($params['component'], 'inplace_editable',
+            array($params['itemtype'], $params['itemid'], $params['value']));
+        if (!$tmpl || !($tmpl instanceof \core\output\inplace_editable)) {
+            throw new \moodle_exception('inplaceeditableerror');
+        }
+        return $tmpl->export_for_template($PAGE->get_renderer('core'));
+    }
+
+    /**
+     * Return structure for update_inplace_editable()
+     *
+     * @since Moodle 3.1
+     * @return external_description
+     */
+    public static function update_inplace_editable_returns() {
+        return new external_single_structure(
+            array(
+                'displayvalue' => new external_value(PARAM_RAW, 'display value (may contain link or other html tags)'),
+                'component' => new external_value(PARAM_NOTAGS, 'component responsible for the update', VALUE_OPTIONAL),
+                'itemtype' => new external_value(PARAM_NOTAGS, 'itemtype', VALUE_OPTIONAL),
+                'value' => new external_value(PARAM_RAW, 'value of the item as it is stored', VALUE_OPTIONAL),
+                'itemid' => new external_value(PARAM_RAW, 'identifier of the updated item', VALUE_OPTIONAL),
+                'edithint' => new external_value(PARAM_NOTAGS, 'hint for editing element', VALUE_OPTIONAL),
+                'editlabel' => new external_value(PARAM_NOTAGS, 'label for editing element', VALUE_OPTIONAL),
+            )
+        );
     }
 }

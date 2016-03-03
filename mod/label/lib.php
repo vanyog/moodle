@@ -18,8 +18,7 @@
 /**
  * Library of functions and constants for module label
  *
- * @package    mod
- * @subpackage label
+ * @package mod_label
  * @copyright  1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -140,20 +139,6 @@ function label_get_coursemodule_info($coursemodule) {
 }
 
 /**
- * @return array
- */
-function label_get_view_actions() {
-    return array();
-}
-
-/**
- * @return array
- */
-function label_get_post_actions() {
-    return array();
-}
-
-/**
  * This function is used by the reset_course_userdata function in moodlelib.
  *
  * @param object $data the data submitted from the reset course.
@@ -176,7 +161,6 @@ function label_get_extra_capabilities() {
  * @uses FEATURE_IDNUMBER
  * @uses FEATURE_GROUPS
  * @uses FEATURE_GROUPINGS
- * @uses FEATURE_GROUPMEMBERSONLY
  * @uses FEATURE_MOD_INTRO
  * @uses FEATURE_COMPLETION_TRACKS_VIEWS
  * @uses FEATURE_GRADE_HAS_GRADE
@@ -189,7 +173,6 @@ function label_supports($feature) {
         case FEATURE_IDNUMBER:                return false;
         case FEATURE_GROUPS:                  return false;
         case FEATURE_GROUPINGS:               return false;
-        case FEATURE_GROUPMEMBERSONLY:        return true;
         case FEATURE_MOD_INTRO:               return true;
         case FEATURE_COMPLETION_TRACKS_VIEWS: return false;
         case FEATURE_GRADE_HAS_GRADE:         return false;
@@ -307,11 +290,7 @@ function label_generate_resized_image(stored_file $file, $maxwidth, $maxheight) 
             $mimetype = $file->get_mimetype();
             if ($mimetype === 'image/gif' or $mimetype === 'image/jpeg' or $mimetype === 'image/png') {
                 require_once($CFG->libdir.'/gdlib.php');
-                $tmproot = make_temp_directory('mod_label');
-                $tmpfilepath = $tmproot.'/'.$file->get_contenthash();
-                $file->copy_content_to($tmpfilepath);
-                $data = generate_image_thumbnail($tmpfilepath, $width, $height);
-                unlink($tmpfilepath);
+                $data = $file->generate_image_thumbnail($width, $height);
 
                 if (!empty($data)) {
                     $fs = get_file_storage();

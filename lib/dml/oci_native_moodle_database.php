@@ -406,7 +406,7 @@ class oci_native_moodle_database extends moodle_database {
         oci_free_statement($stmt);
         $records = array_map('strtolower', $records['TABLE_NAME']);
         foreach ($records as $tablename) {
-            if ($this->prefix !== '') {
+            if ($this->prefix !== false && $this->prefix !== '') {
                 if (strpos($tablename, $this->prefix) !== 0) {
                     continue;
                 }
@@ -565,7 +565,7 @@ class oci_native_moodle_database extends moodle_database {
                         $info->meta_type     = 'I';
                         $info->unique        = null;
                     }
-                    $info->scale = null;
+                    $info->scale = 0;
 
                 } else {
                     //float
@@ -664,7 +664,7 @@ class oci_native_moodle_database extends moodle_database {
         }
 
         if ($usecache) {
-            $result = $cache->set($table, $structure);
+            $cache->set($table, $structure);
         }
 
         return $structure;
@@ -683,7 +683,7 @@ class oci_native_moodle_database extends moodle_database {
         if (is_bool($value)) { // Always, convert boolean to int
             $value = (int)$value;
 
-        } else if ($column->meta_type == 'B') { // CLOB detected, we return 'blob' array instead of raw value to allow
+        } else if ($column->meta_type == 'B') { // BLOB detected, we return 'blob' array instead of raw value to allow
             if (!is_null($value)) {             // binding/executing code later to know about its nature
                 $value = array('blob' => $value);
             }
@@ -712,11 +712,7 @@ class oci_native_moodle_database extends moodle_database {
      */
     private function get_limit_sql($sql, array $params = null, $limitfrom=0, $limitnum=0) {
 
-        $limitfrom = (int)$limitfrom;
-        $limitnum  = (int)$limitnum;
-        $limitfrom = ($limitfrom < 0) ? 0 : $limitfrom;
-        $limitnum  = ($limitnum < 0)  ? 0 : $limitnum;
-
+        list($limitfrom, $limitnum) = $this->normalise_limit_from_num($limitfrom, $limitnum);
         // TODO: Add the /*+ FIRST_ROWS */ hint if there isn't another hint
 
         if ($limitfrom and $limitnum) {
@@ -892,19 +888,28 @@ class oci_native_moodle_database extends moodle_database {
 
     /**
      * Do NOT use in code, to be used by database_manager only!
-     * @param string $sql query
+     * @param string|array $sql query
      * @return bool true
-     * @throws dml_exception A DML specific exception is thrown for any errors.
+     * @throws ddl_change_structure_exception A DDL specific exception is thrown for any errors.
      */
     public function change_database_structure($sql) {
+        $this->get_manager(); // Includes DDL exceptions classes ;-)
+        $sqls = (array)$sql;
+
+        try {
+            foreach ($sqls as $sql) {
+                $this->query_start($sql, null, SQL_QUERY_STRUCTURE);
+                $stmt = $this->parse_query($sql);
+                $result = oci_execute($stmt, $this->commit_status);
+                $this->query_end($result, $stmt);
+                oci_free_statement($stmt);
+            }
+        } catch (ddl_change_structure_exception $e) {
+            $this->reset_caches();
+            throw $e;
+        }
+
         $this->reset_caches();
-
-        $this->query_start($sql, null, SQL_QUERY_STRUCTURE);
-        $stmt = $this->parse_query($sql);
-        $result = oci_execute($stmt, $this->commit_status);
-        $this->query_end($result, $stmt);
-        oci_free_statement($stmt);
-
         return true;
     }
 
@@ -940,6 +945,18 @@ class oci_native_moodle_database extends moodle_database {
                         $descriptors[] = $lob;
                         continue; // Column binding finished, go to next one
                     }
+                } else {
+                    // If, at this point, the param value > 4000 (bytes), let's assume it's a clob
+                    // passed in an arbitrary sql (not processed by normalise_value() ever,
+                    // and let's handle it as such. This will provide proper binding of CLOBs in
+                    // conditions and other raw SQLs not covered by the above function.
+                    if (strlen($value) > 4000) {
+                        $lob = oci_new_descriptor($this->oci, OCI_DTYPE_LOB);
+                        oci_bind_by_name($stmt, $key, $lob, -1, SQLT_CLOB);
+                        $lob->writeTemporary($this->oracle_dirty_hack($tablename, $columnname, $params[$key]), OCI_TEMP_CLOB);
+                        $descriptors[] = $lob;
+                        continue; // Param binding finished, go to next one.
+                    }
                 }
                 // TODO: Put proper types and length is possible (enormous speedup)
                 // Arrived here, continue with standard processing, using metadata if possible
@@ -973,7 +990,8 @@ class oci_native_moodle_database extends moodle_database {
 
                     default: // Bind as CHAR (applying dirty hack)
                         // TODO: Optimise
-                        oci_bind_by_name($stmt, $key, $this->oracle_dirty_hack($tablename, $columnname, $params[$key]));
+                        $params[$key] = $this->oracle_dirty_hack($tablename, $columnname, $params[$key]);
+                        oci_bind_by_name($stmt, $key, $params[$key]);
                 }
             }
         }
@@ -1256,6 +1274,10 @@ class oci_native_moodle_database extends moodle_database {
         $dataobject = (array)$dataobject;
 
         $columns = $this->get_columns($table);
+        if (empty($columns)) {
+            throw new dml_exception('ddltablenotexist', $table);
+        }
+
         $cleaned = array();
 
         foreach ($dataobject as $field=>$value) {
@@ -1720,6 +1742,20 @@ class oci_native_moodle_database extends moodle_database {
             }
             $this->change_database_structure($sql);
         }
+    }
+
+    /**
+     * Does this driver support tool_replace?
+     *
+     * @since Moodle 2.8
+     * @return bool
+     */
+    public function replace_all_text_supported() {
+        return true;
+    }
+
+    public function session_lock_supported() {
+        return true;
     }
 
     /**

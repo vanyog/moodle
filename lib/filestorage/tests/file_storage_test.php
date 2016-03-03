@@ -40,7 +40,8 @@ class core_files_file_storage_testcase extends advanced_testcase {
 
         $this->resetAfterTest(true);
 
-        $this->assertEquals(0, $DB->count_records('files', array()));
+        // Number of files installed in the database on a fresh Moodle site.
+        $installedfiles = $DB->count_records('files', array());
 
         $content = 'abcd';
         $syscontext = context_system::instance();
@@ -68,7 +69,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertFileExists($location);
 
         // Verify the dir placeholder files are created.
-        $this->assertEquals(3, $DB->count_records('files', array()));
+        $this->assertEquals($installedfiles + 3, $DB->count_records('files', array()));
         $this->assertTrue($DB->record_exists('files', array('pathnamehash'=>sha1('/'.$filerecord['contextid'].'/'.$filerecord['component'].'/'.$filerecord['filearea'].'/'.$filerecord['itemid'].'/.'))));
         $this->assertTrue($DB->record_exists('files', array('pathnamehash'=>sha1('/'.$filerecord['contextid'].'/'.$filerecord['component'].'/'.$filerecord['filearea'].'/'.$filerecord['itemid'].$filerecord['filepath'].'.'))));
 
@@ -83,7 +84,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertSame($file->get_contenthash(), $file2->get_contenthash());
         $this->assertFileExists($location);
 
-        $this->assertEquals(4, $DB->count_records('files', array()));
+        $this->assertEquals($installedfiles + 4, $DB->count_records('files', array()));
 
         // Test that borked content file is recreated.
 
@@ -98,7 +99,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertSame($content, file_get_contents($location));
         $this->assertDebuggingCalled();
 
-        $this->assertEquals(5, $DB->count_records('files', array()));
+        $this->assertEquals($installedfiles + 5, $DB->count_records('files', array()));
     }
 
     /**
@@ -109,8 +110,8 @@ class core_files_file_storage_testcase extends advanced_testcase {
 
         $this->resetAfterTest(true);
 
-        $filecount = $DB->count_records('files', array());
-        $this->assertEquals(0, $filecount);
+        // Number of files installed in the database on a fresh Moodle site.
+        $installedfiles = $DB->count_records('files', array());
 
         $filepath = $CFG->dirroot.'/lib/filestorage/tests/fixtures/testimage.jpg';
         $syscontext = context_system::instance();
@@ -137,7 +138,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertFileExists($location);
 
         // Verify the dir placeholder files are created.
-        $this->assertEquals(3, $DB->count_records('files', array()));
+        $this->assertEquals($installedfiles + 3, $DB->count_records('files', array()));
         $this->assertTrue($DB->record_exists('files', array('pathnamehash'=>sha1('/'.$filerecord['contextid'].'/'.$filerecord['component'].'/'.$filerecord['filearea'].'/'.$filerecord['itemid'].'/.'))));
         $this->assertTrue($DB->record_exists('files', array('pathnamehash'=>sha1('/'.$filerecord['contextid'].'/'.$filerecord['component'].'/'.$filerecord['filearea'].'/'.$filerecord['itemid'].$filerecord['filepath'].'.'))));
 
@@ -152,7 +153,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertSame($file->get_contenthash(), $file2->get_contenthash());
         $this->assertFileExists($location);
 
-        $this->assertEquals(4, $DB->count_records('files', array()));
+        $this->assertEquals($installedfiles + 4, $DB->count_records('files', array()));
 
         // Test that borked content file is recreated.
 
@@ -167,7 +168,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertSame(file_get_contents($filepath), file_get_contents($location));
         $this->assertDebuggingCalled();
 
-        $this->assertEquals(5, $DB->count_records('files', array()));
+        $this->assertEquals($installedfiles + 5, $DB->count_records('files', array()));
 
         // Test invalid file creation.
 
@@ -299,7 +300,8 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertEquals($contenthash, $file->get_contenthash());
 
         // Try break it.
-        $this->setExpectedException('file_exception');
+        $this->setExpectedException('file_exception',
+                'Can not create file "1/core/unittest/0/test/newtest.txt" (file exists, cannot rename)');
         // This shall throw exception.
         $originalfile->rename($newpath, $newname);
     }
@@ -325,8 +327,8 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $repositorypluginname = 'user';
         // Override repository permission.
         $capability = 'repository/' . $repositorypluginname . ':view';
-        $allroles = $DB->get_records_menu('role', array(), 'id', 'archetype, id');
-        assign_capability($capability, CAP_ALLOW, $allroles['guest'], $syscontext->id, true);
+        $guestroleid = $DB->get_field('role', 'id', array('shortname' => 'guest'));
+        assign_capability($capability, CAP_ALLOW, $guestroleid, $syscontext->id, true);
 
         $args = array();
         $args['type'] = $repositorypluginname;
@@ -413,7 +415,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
 
         $file2 = clone($file1);
         $file2->filename = '2.txt';
-        $userfile2 = $fs->create_file_from_string($file2, 'file2 content');
+        $userfile2 = $fs->create_file_from_string($file2, 'file2 content longer');
         $this->assertInstanceOf('stored_file', $userfile2);
 
         $file3 = clone($file1);
@@ -865,7 +867,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
             'itemid'    => 0,
             'filepath'  => '/downloadtest/',
         );
-        $url = 'http://download.moodle.org/unittest/test.html';
+        $url = $this->getExternalTestFileUrl('/test.html');
 
         $fs = get_file_storage();
 
@@ -982,6 +984,69 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $filerecord['filename'] = 'testimage-convereted-nosize.jpg';
         $converted = $fs->convert_image($filerecord, $original);
         $this->assertInstanceOf('stored_file', $converted);
+    }
+
+    public function test_convert_image_png() {
+        global $CFG;
+
+        $this->resetAfterTest(false);
+
+        $filepath = $CFG->dirroot.'/lib/filestorage/tests/fixtures/testimage.png';
+        $syscontext = context_system::instance();
+        $filerecord = array(
+            'contextid' => $syscontext->id,
+            'component' => 'core',
+            'filearea'  => 'unittest',
+            'itemid'    => 0,
+            'filepath'  => '/images/',
+            'filename'  => 'testimage.png',
+        );
+
+        $fs = get_file_storage();
+        $original = $fs->create_file_from_pathname($filerecord, $filepath);
+
+        // Vanilla test.
+        $filerecord['filename'] = 'testimage-converted-nosize.png';
+        $vanilla = $fs->convert_image($filerecord, $original);
+        $this->assertInstanceOf('stored_file', $vanilla);
+        // Assert that byte 25 has the ascii value 6 for PNG-24.
+        $this->assertTrue(ord(substr($vanilla->get_content(), 25, 1)) == 6);
+
+        // 10x10 resize test; also testing for a ridiculous quality setting, which
+        // we should if necessary scale to the 0 - 9 range.
+        $filerecord['filename'] = 'testimage-converted-10x10.png';
+        $converted = $fs->convert_image($filerecord, $original, 10, 10, true, 100);
+        $this->assertInstanceOf('stored_file', $converted);
+        // Assert that byte 25 has the ascii value 6 for PNG-24.
+        $this->assertTrue(ord(substr($converted->get_content(), 25, 1)) == 6);
+
+        // Transparency test.
+        $filerecord['filename'] = 'testimage-converted-102x31.png';
+        $converted = $fs->convert_image($filerecord, $original, 102, 31, true, 9);
+        $this->assertInstanceOf('stored_file', $converted);
+        // Assert that byte 25 has the ascii value 6 for PNG-24.
+        $this->assertTrue(ord(substr($converted->get_content(), 25, 1)) == 6);
+
+        $originalfile = imagecreatefromstring($original->get_content());
+        $convertedfile = imagecreatefromstring($converted->get_content());
+        $vanillafile = imagecreatefromstring($vanilla->get_content());
+
+        $originalcolors = imagecolorsforindex($originalfile, imagecolorat($originalfile, 0, 0));
+        $convertedcolors = imagecolorsforindex($convertedfile, imagecolorat($convertedfile, 0, 0));
+        $vanillacolors = imagecolorsforindex($vanillafile, imagecolorat($vanillafile, 0, 0));
+        $this->assertEquals(count($originalcolors), 4);
+        $this->assertEquals(count($convertedcolors), 4);
+        $this->assertEquals(count($vanillacolors), 4);
+        $this->assertEquals($originalcolors['red'], $convertedcolors['red']);
+        $this->assertEquals($originalcolors['green'], $convertedcolors['green']);
+        $this->assertEquals($originalcolors['blue'], $convertedcolors['blue']);
+        $this->assertEquals($originalcolors['alpha'], $convertedcolors['alpha']);
+        $this->assertEquals($originalcolors['red'], $vanillacolors['red']);
+        $this->assertEquals($originalcolors['green'], $vanillacolors['green']);
+        $this->assertEquals($originalcolors['blue'], $vanillacolors['blue']);
+        $this->assertEquals($originalcolors['alpha'], $vanillacolors['alpha']);
+        $this->assertEquals($originalcolors['alpha'], 127);
+
     }
 
     private function generate_file_record() {
@@ -1145,7 +1210,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertInstanceOf('stored_file', $file1);
 
         // Creating a file validating unique constraint.
-        $this->setExpectedException('stored_file_creation_exception');
+        $this->setExpectedException('stored_file_creation_exception', 'Can not create file "1/core/phpunit/0/testfile.txt"');
         $fs->create_file_from_storedfile($filerecord, $file1->get_id());
     }
 
@@ -1425,7 +1490,7 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $this->assertInstanceOf('stored_file', $file1);
 
         // Creating a file validating unique constraint.
-        $this->setExpectedException('stored_file_creation_exception');
+        $this->setExpectedException('stored_file_creation_exception', 'Can not create file "1/core/phpunit/0/testfile.txt"');
         $file2 = $fs->create_file_from_pathname($filerecord, $path);
     }
 
@@ -1513,6 +1578,113 @@ class core_files_file_storage_testcase extends advanced_testcase {
         $symlink2 = $fs->get_file($aliasrecord->contextid, $aliasrecord->component,
             $aliasrecord->filearea, $aliasrecord->itemid, '/B/', 'symlink.txt');
         $this->assertTrue($symlink2->is_external_file());
+    }
+
+    /**
+     * Make sure that when internal file is updated all references to it are
+     * updated immediately. When it is deleted, the references are converted
+     * to true copies.
+     */
+    public function test_update_reference_internal() {
+        purge_all_caches();
+        $this->resetAfterTest(true);
+        $user = $this->setup_three_private_files();
+        $fs = get_file_storage();
+        $repos = repository::get_instances(array('type' => 'user'));
+        $repo = reset($repos);
+
+        // Create two aliases linking the same original.
+
+        $areafiles = array_values($fs->get_area_files($user->ctxid, 'user', 'private', false, 'filename', false));
+
+        $originalfile = $areafiles[0];
+        $this->assertInstanceOf('stored_file', $originalfile);
+        $contenthash = $originalfile->get_contenthash();
+        $filesize = $originalfile->get_filesize();
+
+        $substitutefile = $areafiles[1];
+        $this->assertInstanceOf('stored_file', $substitutefile);
+        $newcontenthash = $substitutefile->get_contenthash();
+        $newfilesize = $substitutefile->get_filesize();
+
+        $originalrecord = array(
+            'contextid' => $originalfile->get_contextid(),
+            'component' => $originalfile->get_component(),
+            'filearea'  => $originalfile->get_filearea(),
+            'itemid'    => $originalfile->get_itemid(),
+            'filepath'  => $originalfile->get_filepath(),
+            'filename'  => $originalfile->get_filename(),
+        );
+
+        $aliasrecord = $this->generate_file_record();
+        $aliasrecord->filepath = '/A/';
+        $aliasrecord->filename = 'symlink.txt';
+
+        $ref = $fs->pack_reference($originalrecord);
+        $symlink1 = $fs->create_file_from_reference($aliasrecord, $repo->id, $ref);
+        // Make sure created alias is a reference and has the same size and contenthash as source.
+        $this->assertEquals($contenthash, $symlink1->get_contenthash());
+        $this->assertEquals($filesize, $symlink1->get_filesize());
+        $this->assertEquals($repo->id, $symlink1->get_repository_id());
+        $this->assertNotEmpty($symlink1->get_referencefileid());
+        $referenceid = $symlink1->get_referencefileid();
+
+        $aliasrecord->filepath = '/B/';
+        $aliasrecord->filename = 'symlink.txt';
+        $ref = $fs->pack_reference($originalrecord);
+        $symlink2 = $fs->create_file_from_reference($aliasrecord, $repo->id, $ref);
+        // Make sure created alias is a reference and has the same size and contenthash as source.
+        $this->assertEquals($contenthash, $symlink2->get_contenthash());
+        $this->assertEquals($filesize, $symlink2->get_filesize());
+        $this->assertEquals($repo->id, $symlink2->get_repository_id());
+        // Make sure both aliases have the same reference id.
+        $this->assertEquals($referenceid, $symlink2->get_referencefileid());
+
+        // Overwrite ofiginal file.
+        $originalfile->replace_file_with($substitutefile);
+        $this->assertEquals($newcontenthash, $originalfile->get_contenthash());
+        $this->assertEquals($newfilesize, $originalfile->get_filesize());
+
+        // References to the internal files must be synchronised immediately.
+        // Refetch A/symlink.txt file.
+        $symlink1 = $fs->get_file($aliasrecord->contextid, $aliasrecord->component,
+            $aliasrecord->filearea, $aliasrecord->itemid, '/A/', 'symlink.txt');
+        $this->assertTrue($symlink1->is_external_file());
+        $this->assertEquals($newcontenthash, $symlink1->get_contenthash());
+        $this->assertEquals($newfilesize, $symlink1->get_filesize());
+        $this->assertEquals($repo->id, $symlink1->get_repository_id());
+        $this->assertEquals($referenceid, $symlink1->get_referencefileid());
+
+        // Refetch B/symlink.txt file.
+        $symlink2 = $fs->get_file($aliasrecord->contextid, $aliasrecord->component,
+            $aliasrecord->filearea, $aliasrecord->itemid, '/B/', 'symlink.txt');
+        $this->assertTrue($symlink2->is_external_file());
+        $this->assertEquals($newcontenthash, $symlink2->get_contenthash());
+        $this->assertEquals($newfilesize, $symlink2->get_filesize());
+        $this->assertEquals($repo->id, $symlink2->get_repository_id());
+        $this->assertEquals($referenceid, $symlink2->get_referencefileid());
+
+        // Remove original file.
+        $originalfile->delete();
+
+        // References must be converted to independend files.
+        // Refetch A/symlink.txt file.
+        $symlink1 = $fs->get_file($aliasrecord->contextid, $aliasrecord->component,
+            $aliasrecord->filearea, $aliasrecord->itemid, '/A/', 'symlink.txt');
+        $this->assertFalse($symlink1->is_external_file());
+        $this->assertEquals($newcontenthash, $symlink1->get_contenthash());
+        $this->assertEquals($newfilesize, $symlink1->get_filesize());
+        $this->assertNull($symlink1->get_repository_id());
+        $this->assertNull($symlink1->get_referencefileid());
+
+        // Refetch B/symlink.txt file.
+        $symlink2 = $fs->get_file($aliasrecord->contextid, $aliasrecord->component,
+            $aliasrecord->filearea, $aliasrecord->itemid, '/B/', 'symlink.txt');
+        $this->assertFalse($symlink2->is_external_file());
+        $this->assertEquals($newcontenthash, $symlink2->get_contenthash());
+        $this->assertEquals($newfilesize, $symlink2->get_filesize());
+        $this->assertNull($symlink2->get_repository_id());
+        $this->assertNull($symlink2->get_referencefileid());
     }
 
     public function test_get_unused_filename() {

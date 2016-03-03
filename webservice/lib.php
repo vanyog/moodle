@@ -69,16 +69,36 @@ class webservice {
             throw new moodle_exception('invalidtoken', 'webservice');
         }
 
+        $loginfaileddefaultparams = array(
+            'other' => array(
+                'method' => WEBSERVICE_AUTHMETHOD_PERMANENT_TOKEN,
+                'reason' => null,
+                'tokenid' => $token->id
+            )
+        );
+
         // Validate token date
         if ($token->validuntil and $token->validuntil < time()) {
-            add_to_log(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '', get_string('invalidtimedtoken', 'webservice'), 0);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'token_expired';
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->add_record_snapshot('external_tokens', $token);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '',
+                get_string('invalidtimedtoken', 'webservice'), 0));
+            $event->trigger();
             $DB->delete_records('external_tokens', array('token' => $token->token));
             throw new webservice_access_exception('Invalid token - token expired - check validuntil time for the token');
         }
 
         // Check ip
         if ($token->iprestriction and !address_in_subnet(getremoteaddr(), $token->iprestriction)) {
-            add_to_log(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '', get_string('failedtolog', 'webservice') . ": " . getremoteaddr(), 0);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'ip_restricted';
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->add_record_snapshot('external_tokens', $token);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '',
+                get_string('failedtolog', 'webservice') . ": " . getremoteaddr(), 0));
+            $event->trigger();
             throw new webservice_access_exception('Invalid token - IP:' . getremoteaddr()
                     . ' is not supported');
         }
@@ -90,12 +110,11 @@ class webservice {
         enrol_check_plugins($user);
 
         // setup user session to check capability
-        session_set_user($user);
+        \core\session\manager::set_user($user);
 
         //assumes that if sid is set then there must be a valid associated session no matter the token type
         if ($token->sid) {
-            $session = session_get_instance();
-            if (!$session->session_exists($token->sid)) {
+            if (!\core\session\manager::session_exists($token->sid)) {
                 $DB->delete_records('external_tokens', array('sid' => $token->sid));
                 throw new webservice_access_exception('Invalid session based token - session not found or expired');
             }
@@ -142,19 +161,34 @@ class webservice {
 
         //only confirmed user should be able to call web service
         if (empty($user->confirmed)) {
-            add_to_log(SITEID, 'webservice', 'user unconfirmed', '', $user->username);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'user_unconfirmed';
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->add_record_snapshot('external_tokens', $token);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', 'user unconfirmed', '', $user->username));
+            $event->trigger();
             throw new moodle_exception('usernotconfirmed', 'moodle', '', $user->username);
         }
 
         //check the user is suspended
         if (!empty($user->suspended)) {
-            add_to_log(SITEID, 'webservice', 'user suspended', '', $user->username);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'user_suspended';
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->add_record_snapshot('external_tokens', $token);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', 'user suspended', '', $user->username));
+            $event->trigger();
             throw new webservice_access_exception('Refused web service access for suspended username: ' . $user->username);
         }
 
         //check if the auth method is nologin (in this case refuse connection)
         if ($user->auth == 'nologin') {
-            add_to_log(SITEID, 'webservice', 'nologin auth attempt with web service', '', $user->username);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'nologin';
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->add_record_snapshot('external_tokens', $token);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', 'nologin auth attempt with web service', '', $user->username));
+            $event->trigger();
             throw new webservice_access_exception('Refused web service access for nologin authentication username: ' . $user->username);
         }
 
@@ -163,7 +197,12 @@ class webservice {
         if (!empty($auth->config->expiration) and $auth->config->expiration == 1) {
             $days2expire = $auth->password_expire($user->username);
             if (intval($days2expire) < 0) {
-                add_to_log(SITEID, 'webservice', 'expired password', '', $user->username);
+                $params = $loginfaileddefaultparams;
+                $params['other']['reason'] = 'password_expired';
+                $event = \core\event\webservice_login_failed::create($params);
+                $event->add_record_snapshot('external_tokens', $token);
+                $event->set_legacy_logdata(array(SITEID, 'webservice', 'expired password', '', $user->username));
+                $event->trigger();
                 throw new moodle_exception('passwordisexpired', 'webservice');
             }
         }
@@ -716,7 +755,7 @@ class webservice_access_exception extends moodle_exception {
 /**
  * Check if a protocol is enabled
  *
- * @param string $protocol name of WS protocol ('rest', 'soap', 'xmlrpc', 'amf'...)
+ * @param string $protocol name of WS protocol ('rest', 'soap', 'xmlrpc'...)
  * @return bool true if the protocol is enabled
  */
 function webservice_protocol_is_enabled($protocol) {
@@ -823,6 +862,14 @@ abstract class webservice_server implements webservice_server_interface {
             throw new coding_exception('Cookies must be disabled in WS servers!');
         }
 
+        $loginfaileddefaultparams = array(
+            'context' => context_system::instance(),
+            'other' => array(
+                'method' => $this->authmethod,
+                'reason' => null
+            )
+        );
+
         if ($this->authmethod == WEBSERVICE_AUTHMETHOD_USERNAME) {
 
             //we check that authentication plugin is enabled
@@ -846,8 +893,16 @@ abstract class webservice_server implements webservice_server_interface {
             }
 
             if (!$auth->user_login_webservice($this->username, $this->password)) {
-                // log failed login attempts
-                add_to_log(SITEID, 'webservice', get_string('simpleauthlog', 'webservice'), '' , get_string('failedtolog', 'webservice').": ".$this->username."/".$this->password." - ".getremoteaddr() , 0);
+
+                // Log failed login attempts.
+                $params = $loginfaileddefaultparams;
+                $params['other']['reason'] = 'password';
+                $params['other']['username'] = $this->username;
+                $event = \core\event\webservice_login_failed::create($params);
+                $event->set_legacy_logdata(array(SITEID, 'webservice', get_string('simpleauthlog', 'webservice'), '' ,
+                    get_string('failedtolog', 'webservice').": ".$this->username."/".$this->password." - ".getremoteaddr() , 0));
+                $event->trigger();
+
                 throw new moodle_exception('wrongusernamepassword', 'webservice');
             }
 
@@ -867,19 +922,37 @@ abstract class webservice_server implements webservice_server_interface {
 
         //only confirmed user should be able to call web service
         if (!empty($user->deleted)) {
-            add_to_log(SITEID, '', '', '', get_string('wsaccessuserdeleted', 'webservice', $user->username) . " - ".getremoteaddr(), 0, $user->id);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'user_deleted';
+            $params['other']['username'] = $user->username;
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->set_legacy_logdata(array(SITEID, '', '', '', get_string('wsaccessuserdeleted', 'webservice',
+                $user->username) . " - ".getremoteaddr(), 0, $user->id));
+            $event->trigger();
             throw new webservice_access_exception('Refused web service access for deleted username: ' . $user->username);
         }
 
         //only confirmed user should be able to call web service
         if (empty($user->confirmed)) {
-            add_to_log(SITEID, '', '', '', get_string('wsaccessuserunconfirmed', 'webservice', $user->username) . " - ".getremoteaddr(), 0, $user->id);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'user_unconfirmed';
+            $params['other']['username'] = $user->username;
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->set_legacy_logdata(array(SITEID, '', '', '', get_string('wsaccessuserunconfirmed', 'webservice',
+                $user->username) . " - ".getremoteaddr(), 0, $user->id));
+            $event->trigger();
             throw new moodle_exception('wsaccessuserunconfirmed', 'webservice', '', $user->username);
         }
 
         //check the user is suspended
         if (!empty($user->suspended)) {
-            add_to_log(SITEID, '', '', '', get_string('wsaccessusersuspended', 'webservice', $user->username) . " - ".getremoteaddr(), 0, $user->id);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'user_unconfirmed';
+            $params['other']['username'] = $user->username;
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->set_legacy_logdata(array(SITEID, '', '', '', get_string('wsaccessusersuspended', 'webservice',
+                $user->username) . " - ".getremoteaddr(), 0, $user->id));
+            $event->trigger();
             throw new webservice_access_exception('Refused web service access for suspended username: ' . $user->username);
         }
 
@@ -892,20 +965,32 @@ abstract class webservice_server implements webservice_server_interface {
         if (!empty($auth->config->expiration) and $auth->config->expiration == 1) {
             $days2expire = $auth->password_expire($user->username);
             if (intval($days2expire) < 0 ) {
-                add_to_log(SITEID, '', '', '', get_string('wsaccessuserexpired', 'webservice', $user->username) . " - ".getremoteaddr(), 0, $user->id);
+                $params = $loginfaileddefaultparams;
+                $params['other']['reason'] = 'password_expired';
+                $params['other']['username'] = $user->username;
+                $event = \core\event\webservice_login_failed::create($params);
+                $event->set_legacy_logdata(array(SITEID, '', '', '', get_string('wsaccessuserexpired', 'webservice',
+                    $user->username) . " - ".getremoteaddr(), 0, $user->id));
+                $event->trigger();
                 throw new webservice_access_exception('Refused web service access for password expired username: ' . $user->username);
             }
         }
 
         //check if the auth method is nologin (in this case refuse connection)
         if ($user->auth=='nologin') {
-            add_to_log(SITEID, '', '', '', get_string('wsaccessusernologin', 'webservice', $user->username) . " - ".getremoteaddr(), 0, $user->id);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'login';
+            $params['other']['username'] = $user->username;
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->set_legacy_logdata(array(SITEID, '', '', '', get_string('wsaccessusernologin', 'webservice',
+                $user->username) . " - ".getremoteaddr(), 0, $user->id));
+            $event->trigger();
             throw new webservice_access_exception('Refused web service access for nologin authentication username: ' . $user->username);
         }
 
         // now fake user login, the session is completely empty too
         enrol_check_plugins($user);
-        session_set_user($user);
+        \core\session\manager::set_user($user);
         $this->userid = $user->id;
 
         if ($this->authmethod != WEBSERVICE_AUTHMETHOD_SESSION_TOKEN && !has_capability("webservice/$this->wsname:use", $this->restricted_context)) {
@@ -924,9 +1009,23 @@ abstract class webservice_server implements webservice_server_interface {
      */
     protected function authenticate_by_token($tokentype){
         global $DB;
+
+        $loginfaileddefaultparams = array(
+            'context' => context_system::instance(),
+            'other' => array(
+                'method' => $this->authmethod,
+                'reason' => null
+            )
+        );
+
         if (!$token = $DB->get_record('external_tokens', array('token'=>$this->token, 'tokentype'=>$tokentype))) {
-            // log failed login attempts
-            add_to_log(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '' , get_string('failedtolog', 'webservice').": ".$this->token. " - ".getremoteaddr() , 0);
+            // Log failed login attempts.
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'invalid_token';
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '' ,
+                get_string('failedtolog', 'webservice').": ".$this->token. " - ".getremoteaddr() , 0));
+            $event->trigger();
             throw new moodle_exception('invalidtoken', 'webservice');
         }
 
@@ -936,15 +1035,21 @@ abstract class webservice_server implements webservice_server_interface {
         }
 
         if ($token->sid){//assumes that if sid is set then there must be a valid associated session no matter the token type
-            $session = session_get_instance();
-            if (!$session->session_exists($token->sid)){
+            if (!\core\session\manager::session_exists($token->sid)){
                 $DB->delete_records('external_tokens', array('sid'=>$token->sid));
                 throw new webservice_access_exception('Invalid session based token - session not found or expired');
             }
         }
 
         if ($token->iprestriction and !address_in_subnet(getremoteaddr(), $token->iprestriction)) {
-            add_to_log(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '' , get_string('failedtolog', 'webservice').": ".getremoteaddr() , 0);
+            $params = $loginfaileddefaultparams;
+            $params['other']['reason'] = 'ip_restricted';
+            $params['other']['tokenid'] = $token->id;
+            $event = \core\event\webservice_login_failed::create($params);
+            $event->add_record_snapshot('external_tokens', $token);
+            $event->set_legacy_logdata(array(SITEID, 'webservice', get_string('tokenauthlog', 'webservice'), '' ,
+                get_string('failedtolog', 'webservice').": ".getremoteaddr() , 0));
+            $event->trigger();
             throw new webservice_access_exception('Invalid service - IP:' . getremoteaddr()
                     . ' is not supported - check this allowed user');
         }
@@ -1003,7 +1108,7 @@ abstract class webservice_server implements webservice_server_interface {
  */
 abstract class webservice_zend_server extends webservice_server {
 
-    /** @var string Name of the zend server class : Zend_Amf_Server, moodle_zend_soap_server, Zend_Soap_AutoDiscover, ...*/
+    /** @var string Name of the zend server class : moodle_zend_soap_server, Zend_Soap_AutoDiscover, ...*/
     protected $zend_class;
 
     /** @var stdClass Zend server instance */
@@ -1057,8 +1162,15 @@ abstract class webservice_zend_server extends webservice_server {
         // tell server what functions are available
         $this->zend_server->setClass($this->service_class);
 
-        //log the web service request
-        add_to_log(SITEID, 'webservice', '', '' , $this->zend_class." ".getremoteaddr() , 0, $this->userid);
+        // Log the web service request.
+        $params = array(
+            'other' => array(
+                'function' => 'unknown'
+            )
+        );
+        $event = \core\event\webservice_function_called::create($params);
+        $event->set_legacy_logdata(array(SITEID, 'webservice', '', '', $this->zend_class.' '.getremoteaddr(), 0, $this->userid));
+        $event->trigger();
 
         //send headers
         $this->send_headers();
@@ -1201,9 +1313,9 @@ class '.$classname.' {
                         }
                     }
                 } else if ($keydesc->required == VALUE_OPTIONAL) {
-                    //it does make sens to declare a parameter VALUE_OPTIONAL
-                    //VALUE_OPTIONAL is used only for array/object key
-                    throw new moodle_exception('parametercannotbevalueoptional');
+                    // It does not make sense to declare a parameter VALUE_OPTIONAL.
+                    // VALUE_OPTIONAL is used only for array/object key.
+                    throw new moodle_exception('erroroptionalparamarray', 'webservice', '', $name);
                 }
             } else { //for the moment we do not support default for other structure types
                  if ($keydesc->required == VALUE_DEFAULT) {
@@ -1300,8 +1412,7 @@ class '.$classname.' {
 
     /**
      * You can override this function in your child class to add extra code into the dynamically
-     * created service class. For example it is used in the amf server to cast types of parameters and to
-     * cast the return value to the types as specified in the return value description.
+     * created service class.
      *
      * @param stdClass $function a record from external_function
      * @param array $params web service function parameters
@@ -1469,6 +1580,12 @@ abstract class webservice_base_server extends webservice_server {
     /** @var mixed Function return value */
     protected $returns = null;
 
+    /** @var array List of methods and their information provided by the web service. */
+    protected $servicemethods;
+
+    /** @var  array List of struct classes generated for the web service methods. */
+    protected $servicestructs;
+
     /**
      * This method parses the request input, it needs to get:
      *  1/ user authentication - username+password or token
@@ -1518,8 +1635,15 @@ abstract class webservice_base_server extends webservice_server {
         // find all needed function info and make sure user may actually execute the function
         $this->load_function_info();
 
-        //log the web service request
-        add_to_log(SITEID, 'webservice', $this->functionname, '' , getremoteaddr() , 0, $this->userid);
+        // Log the web service request.
+        $params = array(
+            'other' => array(
+                'function' => $this->functionname
+            )
+        );
+        $event = \core\event\webservice_function_called::create($params);
+        $event->set_legacy_logdata(array(SITEID, 'webservice', $this->functionname, '' , getremoteaddr() , 0, $this->userid));
+        $event->trigger();
 
         // finally, execute the function - any errors are catched by the default exception handler
         $this->execute();
@@ -1660,6 +1784,317 @@ abstract class webservice_base_server extends webservice_server {
         // execute - yay!
         $this->returns = call_user_func_array(array($this->function->classname, $this->function->methodname), array_values($params));
     }
+
+    /**
+     * Load the virtual class needed for the web service.
+     *
+     * Initialises the virtual class that contains the web service functions that the user is allowed to use.
+     * The web service function will be available if the user:
+     * - is validly registered in the external_services_users table.
+     * - has the required capability.
+     * - meets the IP restriction requirement.
+     * This virtual class can be used by web service protocols such as SOAP, especially when generating WSDL.
+     * NOTE: The implementation of this method has been mostly copied from webservice_zend_server::init_server_class().
+     */
+    protected function init_service_class() {
+        global $USER, $DB;
+
+        // Initialise service methods and struct classes.
+        $this->servicemethods = array();
+        $this->servicestructs = array();
+
+        $params = array();
+        $wscond1 = '';
+        $wscond2 = '';
+        if ($this->restricted_serviceid) {
+            $params = array('sid1' => $this->restricted_serviceid, 'sid2' => $this->restricted_serviceid);
+            $wscond1 = 'AND s.id = :sid1';
+            $wscond2 = 'AND s.id = :sid2';
+        }
+
+        $sql = "SELECT s.*, NULL AS iprestriction
+                  FROM {external_services} s
+                  JOIN {external_services_functions} sf ON (sf.externalserviceid = s.id AND s.restrictedusers = 0)
+                 WHERE s.enabled = 1 $wscond1
+
+                 UNION
+
+                SELECT s.*, su.iprestriction
+                  FROM {external_services} s
+                  JOIN {external_services_functions} sf ON (sf.externalserviceid = s.id AND s.restrictedusers = 1)
+                  JOIN {external_services_users} su ON (su.externalserviceid = s.id AND su.userid = :userid)
+                 WHERE s.enabled = 1 AND (su.validuntil IS NULL OR su.validuntil < :now) $wscond2";
+        $params = array_merge($params, array('userid' => $USER->id, 'now' => time()));
+
+        $serviceids = array();
+        $remoteaddr = getremoteaddr();
+
+        // Query list of external services for the user.
+        $rs = $DB->get_recordset_sql($sql, $params);
+
+        // Check which service ID to include.
+        foreach ($rs as $service) {
+            if (isset($serviceids[$service->id])) {
+                continue; // Service already added.
+            }
+            if ($service->requiredcapability and !has_capability($service->requiredcapability, $this->restricted_context)) {
+                continue; // Cap required, sorry.
+            }
+            if ($service->iprestriction and !address_in_subnet($remoteaddr, $service->iprestriction)) {
+                continue; // Wrong request source ip, sorry.
+            }
+            $serviceids[$service->id] = $service->id;
+        }
+        $rs->close();
+
+        // Generate the virtual class name.
+        $classname = 'webservices_virtual_class_000000';
+        while (class_exists($classname)) {
+            $classname++;
+        }
+        $this->serviceclass = $classname;
+
+        // Get the list of all available external functions.
+        $wsmanager = new webservice();
+        $functions = $wsmanager->get_external_functions($serviceids);
+
+        // Generate code for the virtual methods for this web service.
+        $methods = '';
+        foreach ($functions as $function) {
+            $methods .= $this->get_virtual_method_code($function);
+        }
+
+        $code = <<<EOD
+/**
+ * Virtual class web services for user id $USER->id in context {$this->restricted_context->id}.
+ */
+class $classname {
+$methods
 }
+EOD;
+        // Load the virtual class definition into memory.
+        eval($code);
+    }
 
+    /**
+     * Generates a struct class.
+     *
+     * NOTE: The implementation of this method has been mostly copied from webservice_zend_server::generate_simple_struct_class().
+     * @param external_single_structure $structdesc The basis of the struct class to be generated.
+     * @return string The class name of the generated struct class.
+     */
+    protected function generate_simple_struct_class(external_single_structure $structdesc) {
+        global $USER;
 
+        $propeties = array();
+        $fields = array();
+        foreach ($structdesc->keys as $name => $fieldsdesc) {
+            $type = $this->get_phpdoc_type($fieldsdesc);
+            $propertytype = array('type' => $type);
+            if (empty($fieldsdesc->allownull) || $fieldsdesc->allownull == NULL_ALLOWED) {
+                $propertytype['nillable'] = true;
+            }
+            $propeties[$name] = $propertytype;
+            $fields[] = '    /** @var ' . $type . ' $' . $name . '*/';
+            $fields[] = '    public $' . $name .';';
+        }
+        $fieldsstr = implode("\n", $fields);
+
+        // We do this after the call to get_phpdoc_type() to avoid duplicate class creation.
+        $classname = 'webservices_struct_class_000000';
+        while (class_exists($classname)) {
+            $classname++;
+        }
+        $code = <<<EOD
+/**
+ * Virtual struct class for web services for user id $USER->id in context {$this->restricted_context->id}.
+ */
+class $classname {
+$fieldsstr
+}
+EOD;
+        // Load into memory.
+        eval($code);
+
+        // Prepare struct info.
+        $structinfo = new stdClass();
+        $structinfo->classname = $classname;
+        $structinfo->properties = $propeties;
+        // Add the struct info the the list of service struct classes.
+        $this->servicestructs[] = $structinfo;
+
+        return $classname;
+    }
+
+    /**
+     * Returns a virtual method code for a web service function.
+     *
+     * NOTE: The implementation of this method has been mostly copied from webservice_zend_server::get_virtual_method_code().
+     * @param stdClass $function a record from external_function
+     * @return string The PHP code of the virtual method.
+     * @throws coding_exception
+     * @throws moodle_exception
+     */
+    protected function get_virtual_method_code($function) {
+        $function = external_function_info($function);
+
+        // Parameters and their defaults for the method signature.
+        $paramanddefaults = array();
+        // Parameters for external lib call.
+        $params = array();
+        $paramdesc = array();
+        // The method's input parameters and their respective types.
+        $inputparams = array();
+        // The method's output parameters and their respective types.
+        $outputparams = array();
+
+        foreach ($function->parameters_desc->keys as $name => $keydesc) {
+            $param = '$' . $name;
+            $paramanddefault = $param;
+            if ($keydesc->required == VALUE_OPTIONAL) {
+                // It does not make sense to declare a parameter VALUE_OPTIONAL. VALUE_OPTIONAL is used only for array/object key.
+                throw new moodle_exception('erroroptionalparamarray', 'webservice', '', $name);
+            } else if ($keydesc->required == VALUE_DEFAULT) {
+                // Need to generate the default, if there is any.
+                if ($keydesc instanceof external_value) {
+                    if ($keydesc->default === null) {
+                        $paramanddefault .= ' = null';
+                    } else {
+                        switch ($keydesc->type) {
+                            case PARAM_BOOL:
+                                $default = (int)$keydesc->default;
+                                break;
+                            case PARAM_INT:
+                                $default = $keydesc->default;
+                                break;
+                            case PARAM_FLOAT;
+                                $default = $keydesc->default;
+                                break;
+                            default:
+                                $default = "'$keydesc->default'";
+                        }
+                        $paramanddefault .= " = $default";
+                    }
+                } else {
+                    // Accept empty array as default.
+                    if (isset($keydesc->default) && is_array($keydesc->default) && empty($keydesc->default)) {
+                        $paramanddefault .= ' = array()';
+                    } else {
+                        // For the moment we do not support default for other structure types.
+                        throw new moodle_exception('errornotemptydefaultparamarray', 'webservice', '', $name);
+                    }
+                }
+            }
+
+            $params[] = $param;
+            $paramanddefaults[] = $paramanddefault;
+            $type = $this->get_phpdoc_type($keydesc);
+            $inputparams[$name]['type'] = $type;
+
+            $paramdesc[] = '* @param ' . $type . ' $' . $name . ' ' . $keydesc->desc;
+        }
+        $paramanddefaults = implode(', ', $paramanddefaults);
+        $paramdescstr = implode("\n ", $paramdesc);
+
+        $serviceclassmethodbody = $this->service_class_method_body($function, $params);
+
+        if (empty($function->returns_desc)) {
+            $return = '* @return void';
+        } else {
+            $type = $this->get_phpdoc_type($function->returns_desc);
+            $outputparams['return']['type'] = $type;
+            $return = '* @return ' . $type . ' ' . $function->returns_desc->desc;
+        }
+
+        // Now create the virtual method that calls the ext implementation.
+        $code = <<<EOD
+/**
+ * $function->description.
+ *
+ $paramdescstr
+ $return
+ */
+public function $function->name($paramanddefaults) {
+$serviceclassmethodbody
+}
+EOD;
+
+        // Prepare the method information.
+        $methodinfo = new stdClass();
+        $methodinfo->name = $function->name;
+        $methodinfo->inputparams = $inputparams;
+        $methodinfo->outputparams = $outputparams;
+        $methodinfo->description = $function->description;
+        // Add the method information into the list of service methods.
+        $this->servicemethods[] = $methodinfo;
+
+        return $code;
+    }
+
+    /**
+     * Get the phpdoc type for an external_description object.
+     * external_value => int, double or string
+     * external_single_structure => object|struct, on-fly generated stdClass name.
+     * external_multiple_structure => array
+     *
+     * @param mixed $keydesc The type description.
+     * @return string The PHP doc type of the external_description object.
+     */
+    protected function get_phpdoc_type($keydesc) {
+        $type = null;
+        if ($keydesc instanceof external_value) {
+            switch ($keydesc->type) {
+                case PARAM_BOOL: // 0 or 1 only for now.
+                case PARAM_INT:
+                    $type = 'int';
+                    break;
+                case PARAM_FLOAT;
+                    $type = 'double';
+                    break;
+                default:
+                    $type = 'string';
+            }
+        } else if ($keydesc instanceof external_single_structure) {
+            $type = $this->generate_simple_struct_class($keydesc);
+        } else if ($keydesc instanceof external_multiple_structure) {
+            $type = 'array';
+        }
+
+        return $type;
+    }
+
+    /**
+     * Generates the method body of the virtual external function.
+     *
+     * NOTE: The implementation of this method has been mostly copied from webservice_zend_server::service_class_method_body().
+     * @param stdClass $function a record from external_function.
+     * @param array $params web service function parameters.
+     * @return string body of the method for $function ie. everything within the {} of the method declaration.
+     */
+    protected function service_class_method_body($function, $params) {
+        // Cast the param from object to array (validate_parameters except array only).
+        $castingcode = '';
+        $paramsstr = '';
+        if (!empty($params)) {
+            foreach ($params as $paramtocast) {
+                // Clean the parameter from any white space.
+                $paramtocast = trim($paramtocast);
+                $castingcode .= "    $paramtocast = json_decode(json_encode($paramtocast), true);\n";
+            }
+            $paramsstr = implode(', ', $params);
+        }
+
+        $descriptionmethod = $function->methodname . '_returns()';
+        $callforreturnvaluedesc = $function->classname . '::' . $descriptionmethod;
+
+        $methodbody = <<<EOD
+$castingcode
+    if ($callforreturnvaluedesc == null) {
+        $function->classname::$function->methodname($paramsstr);
+        return null;
+    }
+    return external_api::clean_returnvalue($callforreturnvaluedesc, $function->classname::$function->methodname($paramsstr));
+EOD;
+        return $methodbody;
+    }
+}

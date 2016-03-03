@@ -69,8 +69,7 @@ class format_singleactivity extends format_base {
     public function extend_course_navigation($navigation, navigation_node $node) {
         // Display orphaned activities for the users who can see them.
         $context = context_course::instance($this->courseid);
-        if (has_all_capabilities(array('moodle/course:viewhiddensections',
-                'moodle/course:viewhiddenactivities'), $context)) {
+        if (has_capability('moodle/course:viewhiddensections', $context)) {
             $modinfo = get_fast_modinfo($this->courseid);
             if (!empty($modinfo->sections[1])) {
                 $section1 = $modinfo->get_section_info(1);
@@ -80,7 +79,9 @@ class format_singleactivity extends format_base {
                 $orphanednode->nodetype = navigation_node::NODETYPE_BRANCH;
                 $orphanednode->add_class('orphaned');
                 foreach ($modinfo->sections[1] as $cmid) {
-                    $this->navigation_add_activity($orphanednode, $modinfo->cms[$cmid]);
+                    if (has_capability('moodle/course:viewhiddenactivities', context_module::instance($cmid))) {
+                        $this->navigation_add_activity($orphanednode, $modinfo->cms[$cmid]);
+                    }
                 }
             }
         }
@@ -100,7 +101,7 @@ class format_singleactivity extends format_base {
         if (!$cm->uservisible) {
             return null;
         }
-        $action = $cm->get_url();
+        $action = $cm->url;
         if (!$action) {
             // Do not add to navigation activity without url (i.e. labels).
             return null;
@@ -154,7 +155,7 @@ class format_singleactivity extends format_base {
             );
         }
         if ($foreditform && !isset($courseformatoptions['activitytype']['label'])) {
-            $availabletypes = get_module_types_names();
+            $availabletypes = $this->get_supported_activities();
             $courseformatoptionsedit = array(
                 'activitytype' => array(
                     'label' => new lang_string('activitytype', 'format_singleactivity'),
@@ -229,8 +230,16 @@ class format_singleactivity extends format_base {
         }
 
         // Make sure the current activity is in the 0-section.
+        $changed = false;
         if ($activity && $activity->sectionnum != 0) {
             moveto_module($activity, $modinfo->get_section_info(0));
+            $changed = true;
+        }
+        if ($activity && !$activity->visible) {
+            set_coursemodule_visible($activity->id, 1);
+            $changed = true;
+        }
+        if ($changed) {
             // Cache was reset so get modinfo again.
             $modinfo = get_fast_modinfo($this->courseid);
         }
@@ -270,7 +279,7 @@ class format_singleactivity extends format_base {
      */
     protected function get_activitytype() {
         $options = $this->get_format_options();
-        $availabletypes = get_module_types_names();
+        $availabletypes = $this->get_supported_activities();
         if (!empty($options['activitytype']) &&
                 array_key_exists($options['activitytype'], $availabletypes)) {
             return $options['activitytype'];
@@ -289,6 +298,23 @@ class format_singleactivity extends format_base {
             $this->activity = $this->reorder_activities();
         }
         return $this->activity;
+    }
+
+    /**
+     * Get the activities supported by the format.
+     *
+     * Here we ignore the modules that do not have a page of their own, like the label.
+     *
+     * @return array array($module => $name of the module).
+     */
+    public static function get_supported_activities() {
+        $availabletypes = get_module_types_names();
+        foreach ($availabletypes as $module => $name) {
+            if (plugin_supports('mod', $module, FEATURE_NO_VIEW_LINK, false)) {
+                unset($availabletypes[$module]);
+            }
+        }
+        return $availabletypes;
     }
 
     /**
@@ -320,16 +346,10 @@ class format_singleactivity extends format_base {
      * @return bool|null (null if the check is not possible)
      */
     public function activity_has_subtypes() {
-        global $CFG;
         if (!($modname = $this->get_activitytype())) {
             return null;
         }
-        $libfile = "$CFG->dirroot/mod/$modname/lib.php";
-        if (!file_exists($libfile)) {
-            return null;
-        }
-        include_once($libfile);
-        return function_exists($modname. '_get_types');
+        return component_callback('mod_' . $modname, 'get_types', array(), MOD_SUBTYPE_NO_CHILDREN) !== MOD_SUBTYPE_NO_CHILDREN;
     }
 
     /**
@@ -395,13 +415,13 @@ class format_singleactivity extends format_base {
                     // Student views an empty course page.
                     return;
                 }
-            } else if (!$cm->uservisible || !$cm->get_url()) {
+            } else if (!$cm->uservisible || !$cm->url) {
                 // Activity is set but not visible to current user or does not have url.
                 // Display course page (either empty or with availability restriction info).
                 return;
             } else {
                 // Everything is set up and accessible, redirect to the activity page!
-                redirect($cm->get_url());
+                redirect($cm->url);
             }
         }
     }
@@ -440,4 +460,14 @@ class format_singleactivity extends format_base {
             $activitynode->remove();
         }
     }
+
+    /**
+     * Returns true if the course has a front page.
+     *
+     * @return boolean false
+     */
+    public function has_view_page() {
+        return false;
+    }
+
 }

@@ -35,9 +35,19 @@ class auth_plugin_pop3 extends auth_plugin_base {
     /**
      * Constructor.
      */
-    function auth_plugin_pop3() {
+    public function __construct() {
         $this->authtype = 'pop3';
         $this->config = get_config('auth/pop3');
+    }
+
+    /**
+     * Old syntax of class constructor. Deprecated in PHP7.
+     *
+     * @deprecated since Moodle 3.1
+     */
+    public function auth_plugin_pop3() {
+        debugging('Use of class name as constructor is deprecated', DEBUG_DEVELOPER);
+        self::__construct();
     }
 
     /**
@@ -120,7 +130,11 @@ class auth_plugin_pop3 extends auth_plugin_base {
      * @return moodle_url
      */
     function change_password_url() {
-        return new moodle_url($this->config->changepasswordurl);
+        if (!empty($this->config->changepasswordurl)) {
+            return new moodle_url($this->config->changepasswordurl);
+        } else {
+            return null;
+        }
     }
 
     /**

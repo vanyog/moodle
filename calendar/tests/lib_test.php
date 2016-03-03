@@ -35,9 +35,11 @@ require_once($CFG->dirroot . '/calendar/lib.php');
  */
 class core_calendar_lib_testcase extends advanced_testcase {
 
-    public function test_calendar_get_course_cached() {
+    protected function setUp() {
         $this->resetAfterTest(true);
+    }
 
+    public function test_calendar_get_course_cached() {
         // Setup some test courses.
         $course1 = $this->getDataGenerator()->create_course();
         $course2 = $this->getDataGenerator()->create_course();
@@ -67,5 +69,46 @@ class core_calendar_lib_testcase extends advanced_testcase {
         $this->assertEquals($course3->id, $cachedcourse3->id);
         $this->assertEquals($course3->shortname, $cachedcourse3->shortname);
         $this->assertEquals($course3->fullname, $cachedcourse3->fullname);
+    }
+
+    /**
+     * Test calendar cron with a working subscription URL.
+     */
+    public function test_calendar_cron_working_url() {
+        global $CFG;
+        require_once($CFG->dirroot . '/lib/cronlib.php');
+
+        // ICal URL from external test repo.
+        $subscriptionurl = $this->getExternalTestFileUrl('/ical.ics');
+
+        $subscription = new stdClass();
+        $subscription->eventtype = 'site';
+        $subscription->name = 'test';
+        $subscription->url = $subscriptionurl;
+        $subscription->pollinterval = 86400;
+        $subscription->lastupdated = 0;
+        calendar_add_subscription($subscription);
+
+        $this->expectOutputRegex('/Events imported: .* Events updated:/');
+        calendar_cron();
+    }
+
+    /**
+     * Test calendar cron with a broken subscription URL.
+     */
+    public function test_calendar_cron_broken_url() {
+        global $CFG;
+        require_once($CFG->dirroot . '/lib/cronlib.php');
+
+        $subscription = new stdClass();
+        $subscription->eventtype = 'site';
+        $subscription->name = 'test';
+        $subscription->url = 'brokenurl';
+        $subscription->pollinterval = 86400;
+        $subscription->lastupdated = 0;
+        calendar_add_subscription($subscription);
+
+        $this->expectOutputRegex('/Error updating calendar subscription: The given iCal URL is invalid/');
+        calendar_cron();
     }
 }

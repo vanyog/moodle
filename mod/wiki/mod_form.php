@@ -18,9 +18,9 @@
 /**
  * This file defines de main wiki configuration form
  *
- * @package mod-wiki-2.0
- * @copyrigth 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
- * @copyrigth 2009 Universitat Politecnica de Catalunya http://www.upc.edu
+ * @package mod_wiki
+ * @copyright 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
+ * @copyright 2009 Universitat Politecnica de Catalunya http://www.upc.edu
  *
  * @author Jordi Piguillem
  * @author Marc Alier
@@ -55,7 +55,7 @@ class mod_wiki_mod_form extends moodleform_mod {
         $mform->addRule('name', $required, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
         // Adding the optional "intro" and "introformat" pair of fields
-        $this->add_intro_editor(true, get_string('wikiintro', 'wiki'));
+        $this->standard_intro_elements(get_string('wikiintro', 'wiki'));
 
         $wikimodeoptions = array ('collaborative' => get_string('wikimodecollaborative', 'wiki'), 'individual' => get_string('wikimodeindividual', 'wiki'));
         // Don't allow changes to the wiki type once it is set.

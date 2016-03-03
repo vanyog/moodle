@@ -29,6 +29,7 @@ defined('MOODLE_INTERNAL') || die();
  * Cohort updated event class.
  *
  * @package    core
+ * @since      Moodle 2.6
  * @copyright  2013 Dan Poltawski <dan@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -41,7 +42,7 @@ class cohort_updated extends base {
      */
     protected function init() {
         $this->data['crud'] = 'u';
-        $this->data['level'] = self::LEVEL_OTHER;
+        $this->data['edulevel'] = self::LEVEL_OTHER;
         $this->data['objecttable'] = 'cohort';
     }
 
@@ -51,7 +52,7 @@ class cohort_updated extends base {
      * @return string
      */
     public static function get_name() {
-        return get_string('event_cohort_updated', 'core_cohort');
+        return get_string('eventcohortupdated', 'core_cohort');
     }
 
     /**
@@ -60,7 +61,7 @@ class cohort_updated extends base {
      * @return string
      */
     public function get_description() {
-        return 'Cohort '.$this->objectid.' was updated by '.$this->userid.' at context '.$this->contextid;
+        return "The user with id '$this->userid' updated the cohort with id '$this->objectid'.";
     }
 
     /**
@@ -84,9 +85,14 @@ class cohort_updated extends base {
     /**
      * Return legacy event data.
      *
-     * @return stdClass
+     * @return \stdClass
      */
     protected function get_legacy_eventdata() {
         return $this->get_record_snapshot('cohort', $this->objectid);
+    }
+
+    public static function get_objectid_mapping() {
+        // Cohorts are not included in backups, so no mapping is needed for restore.
+        return array('db' => 'cohort', 'restore' => base::NOT_MAPPED);
     }
 }

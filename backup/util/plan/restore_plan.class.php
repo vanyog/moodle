@@ -98,7 +98,7 @@ class restore_plan extends base_plan implements loggable {
      * Gets the progress reporter, which can be used to report progress within
      * the backup or restore process.
      *
-     * @return core_backup_progress Progress reporting object
+     * @return \core\progress\base Progress reporting object
      */
     public function get_progress() {
         return $this->controller->get_progress();
@@ -167,18 +167,21 @@ class restore_plan extends base_plan implements loggable {
         parent::execute();
         $this->controller->set_status(backup::STATUS_FINISHED_OK);
 
-        // Trigger a course restored event.
-        $event = \core\event\course_restored::create(array(
-            'objectid' => $this->get_courseid(),
-            'userid' => $this->get_userid(),
-            'context' => context_course::instance($this->get_courseid()),
-            'other' => array('type' => $this->controller->get_type(),
-                             'target' => $this->controller->get_target(),
-                             'mode' => $this->controller->get_mode(),
-                             'operation' => $this->controller->get_operation(),
-                             'samesite' => $this->controller->is_samesite())
-        ));
-        $event->trigger();
+        // Check if we are restoring a course.
+        if ($this->controller->get_type() === backup::TYPE_1COURSE) {
+            // Trigger a course restored event.
+            $event = \core\event\course_restored::create(array(
+                'objectid' => $this->get_courseid(),
+                'userid' => $this->get_userid(),
+                'context' => context_course::instance($this->get_courseid()),
+                'other' => array('type' => $this->controller->get_type(),
+                                 'target' => $this->controller->get_target(),
+                                 'mode' => $this->controller->get_mode(),
+                                 'operation' => $this->controller->get_operation(),
+                                 'samesite' => $this->controller->is_samesite())
+            ));
+            $event->trigger();
+        }
     }
 
     /**

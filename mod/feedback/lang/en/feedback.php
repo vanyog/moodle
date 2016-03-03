@@ -17,12 +17,12 @@
 /**
  * Strings for component 'feedback', language 'en', branch 'MOODLE_20_STABLE'
  *
- * @package   feedback
+ * @package mod_feedback
  * @copyright 1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$string['add_item'] = 'Add question to activity';
+$string['add_item'] = 'Add question';
 $string['add_pagebreak'] = 'Add a page break';
 $string['adjustment'] = 'Adjustment';
 $string['after_submit'] = 'After submission';
@@ -43,11 +43,10 @@ $string['cannotsavetempl'] = 'saving templates is not allowed';
 $string['cannotunmap'] = 'Database problem, unable to unmap';
 $string['captcha'] = 'Captcha';
 $string['captchanotset'] = 'Captcha hasn\'t been set.';
-$string['completed'] = 'completed';
 $string['completed_feedbacks'] = 'Submitted answers';
 $string['complete_the_form'] = 'Answer the questions...';
 $string['completionsubmit'] = 'View as completed if the feedback is submitted';
-$string['configallowfullanonymous'] = 'If this option is set yes so the feedback can be completed without any preceding logon. It only affects feedbacks on the homepage.';
+$string['configallowfullanonymous'] = 'If set to \'yes\', users can complete a feedback activity on the front page without being required to log in.';
 $string['confirmdeleteentry'] = 'Are you sure you want to delete this entry?';
 $string['confirmdeleteitem'] = 'Are you sure you want to delete this element?';
 $string['confirmdeletetemplate'] = 'Are you sure you want to delete this template?';
@@ -97,11 +96,14 @@ $string['emailteachermail'] = '{$a->username} has completed feedback activity : 
 You can view it here:
 
 {$a->url}';
-$string['emailteachermailhtml'] = '{$a->username} has completed feedback activity : <i>\'{$a->feedback}\'</i><br /><br />
-You can view it <a href="{$a->url}">here</a>.';
+$string['emailteachermailhtml'] = '<p>{$a->username} has completed feedback activity : <i>\'{$a->feedback}\'</i>.</p>
+<p>It is <a href="{$a->url}">available on the site</a>.</p>';
 $string['entries_saved'] = 'Your answers have been saved. Thank you.';
 $string['export_questions'] = 'Export questions';
 $string['export_to_excel'] = 'Export to Excel';
+$string['eventresponsedeleted'] = 'Response deleted';
+$string['eventresponsesubmitted'] = 'Response submitted';
+$string['feedbackcompleted'] = '{$a->username} completed {$a->feedbackname}';
 $string['feedback:addinstance'] = 'Add a new feedback';
 $string['feedbackclose'] = 'Allow answers to';
 $string['feedback:complete'] = 'Complete a feedback';
@@ -140,8 +142,8 @@ $string['insufficient_responses_help'] = 'There are insufficient responses for t
 To keep the feedback anonymous, a minimum of 2 responses must be done.';
 $string['item_label'] = 'Label';
 $string['item_name'] = 'Question';
-$string['items_are_required'] = 'Answers are required to starred questions.';
 $string['label'] = 'Label';
+$string['labelcontents'] = 'Contents';
 $string['line_values'] = 'Rating';
 $string['mapcourseinfo'] = 'This is a site-wide feedback that is available to all courses using the feedback block. You can however limit the courses to which it will appear by mapping them. Search the course and map it to this feedback.';
 $string['mapcoursenone'] = 'No courses mapped. Feedback available to all courses';
@@ -240,6 +242,7 @@ $string['save_entries'] = 'Submit your answers';
 $string['save_item'] = 'Save question';
 $string['saving_failed'] = 'Saving failed';
 $string['saving_failed_because_missing_or_false_values'] = 'Saving failed because missing or false values';
+$string['search:activity'] = 'Feedback activities';
 $string['search_course'] = 'Search course';
 $string['searchcourses'] = 'Search courses';
 $string['searchcourses_help'] = 'Search for the code or name of the course(s) that you wish to associate with this feedback.';
@@ -284,3 +287,5 @@ $string['vertical'] = 'vertical';
 $string['viewcompleted'] = 'completed feedbacks';
 $string['viewcompleted_help'] = 'You may view completed feedback forms, searchable by course and/or by question.
 Feedback responses may be exported to Excel.';
+// Deprecated since Moodle 3.0.
+$string['completed'] = 'completed';

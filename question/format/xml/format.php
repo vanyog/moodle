@@ -169,11 +169,13 @@ class qformat_xml extends qformat_default {
         }
         $fs = get_file_storage();
         $itemid = file_get_unused_draft_itemid();
-        $filenames = array();
+        $filepaths = array();
         foreach ($xml as $file) {
-            $filename = $file['@']['name'];
-            if (in_array($filename, $filenames)) {
-                debugging('Duplicate file in XML: ' . $filename, DEBUG_DEVELOPER);
+            $filename = $this->getpath($file, array('@', 'name'), '', true);
+            $filepath = $this->getpath($file, array('@', 'path'), '/', true);
+            $fullpath = $filepath . $filename;
+            if (in_array($fullpath, $filepaths)) {
+                debugging('Duplicate file in XML: ' . $fullpath, DEBUG_DEVELOPER);
                 continue;
             }
             $filerecord = array(
@@ -181,11 +183,11 @@ class qformat_xml extends qformat_default {
                 'component' => 'user',
                 'filearea'  => 'draft',
                 'itemid'    => $itemid,
-                'filepath'  => '/',
+                'filepath'  => $filepath,
                 'filename'  => $filename,
             );
             $fs->create_file_from_string($filerecord, base64_decode($file['#']));
-            $filenames[] = $filename;
+            $filepaths[] = $fullpath;
         }
         return $itemid;
     }
@@ -196,7 +198,7 @@ class qformat_xml extends qformat_default {
      * @return object question object
      */
     public function import_headers($question) {
-        global $CFG, $USER;
+        global $USER;
 
         // This routine initialises the question object.
         $qo = $this->defaultquestion();
@@ -253,14 +255,7 @@ class qformat_xml extends qformat_default {
         }
 
         // Read the question tags.
-        if (!empty($CFG->usetags) && array_key_exists('tags', $question['#'])
-                && !empty($question['#']['tags'][0]['#']['tag'])) {
-            require_once($CFG->dirroot.'/tag/lib.php');
-            $qo->tags = array();
-            foreach ($question['#']['tags'][0]['#']['tag'] as $tagdata) {
-                $qo->tags[] = $this->getpath($tagdata, array('#', 'text', 0, '#'), '', true);
-            }
-        }
+        $this->import_question_tags($qo, $question);
 
         return $qo;
     }
@@ -379,6 +374,26 @@ class qformat_xml extends qformat_default {
     }
 
     /**
+     * Import all the question tags
+     *
+     * @param object $qo the question data that is being constructed.
+     * @param array $questionxml The xml representing the question.
+     * @return array of objects representing the tags in the file.
+     */
+    public function import_question_tags($qo, $questionxml) {
+        global $CFG;
+
+        if (core_tag_tag::is_enabled('core_question', 'question')
+                && array_key_exists('tags', $questionxml['#'])
+                && !empty($questionxml['#']['tags'][0]['#']['tag'])) {
+            $qo->tags = array();
+            foreach ($questionxml['#']['tags'][0]['#']['tag'] as $tagdata) {
+                $qo->tags[] = $this->getpath($tagdata, array('#', 'text', 0, '#'), '', true);
+            }
+        }
+    }
+
+    /**
      * Import files from a node in the XML.
      * @param array $xml an array of <file> nodes from the the parsed XML.
      * @return array of things representing files - in the form that save_question expects.
@@ -452,7 +467,11 @@ class qformat_xml extends qformat_default {
 
         // Header parts particular to multianswer.
         $qo->qtype = 'multianswer';
-        $qo->course = $this->course;
+
+        // Only set the course if the data is available.
+        if (isset($this->course)) {
+            $qo->course = $this->course;
+        }
 
         $qo->name = $this->clean_question_name($this->import_text($question['#']['name'][0]['#']['text']));
         $qo->questiontextformat = $questiontext['format'];
@@ -499,6 +518,7 @@ class qformat_xml extends qformat_default {
         }
 
         $this->import_hints($qo, $question, true, false, $this->get_format($qo->questiontextformat));
+        $this->import_question_tags($qo, $question);
 
         return $qo;
     }
@@ -726,8 +746,12 @@ class qformat_xml extends qformat_default {
                 array('#', 'responseformat', 0, '#'), 'editor');
         $qo->responsefieldlines = $this->getpath($question,
                 array('#', 'responsefieldlines', 0, '#'), 15);
+        $qo->responserequired = $this->getpath($question,
+                array('#', 'responserequired', 0, '#'), 1);
         $qo->attachments = $this->getpath($question,
                 array('#', 'attachments', 0, '#'), 0);
+        $qo->attachmentsrequired = $this->getpath($question,
+                array('#', 'attachmentsrequired', 0, '#'), 0);
         $qo->graderinfo = $this->import_text_with_files($question,
                 array('#', 'graderinfo', 0), '', $this->get_format($qo->questiontextformat));
         $qo->responsetemplate['text'] = $this->getpath($question,
@@ -773,7 +797,7 @@ class qformat_xml extends qformat_default {
 
         // Get answers array.
         $answers = $question['#']['answer'];
-        $qo->answers = array();
+        $qo->answer = array();
         $qo->feedback = array();
         $qo->fraction = array();
         $qo->tolerance = array();
@@ -787,7 +811,7 @@ class qformat_xml extends qformat_default {
             if (empty($ans->answer['text'])) {
                 $ans->answer['text'] = '*';
             }
-            $qo->answers[] = $ans->answer;
+            $qo->answer[] = $ans->answer['text'];
             $qo->feedback[] = $ans->feedback;
             $qo->tolerance[] = $answer['#']['tolerance'][0]['#'];
             // Fraction as a tag is deprecated.
@@ -850,9 +874,10 @@ class qformat_xml extends qformat_default {
             $qo->dataset[$qo->datasetindex]->itemcount = $dataset['#']['itemcount'][0]['#'];
             $qo->dataset[$qo->datasetindex]->datasetitem = array();
             $qo->dataset[$qo->datasetindex]->itemindex = 0;
-            $qo->dataset[$qo->datasetindex]->number_of_items =
-                    $dataset['#']['number_of_items'][0]['#'];
-            $datasetitems = $dataset['#']['dataset_items'][0]['#']['dataset_item'];
+            $qo->dataset[$qo->datasetindex]->number_of_items = $this->getpath($dataset,
+                    array('#', 'number_of_items', 0, '#'), 0);
+            $datasetitems = $this->getpath($dataset,
+                    array('#', 'dataset_items', 0, '#', 'dataset_item'), array());
             foreach ($datasetitems as $datasetitem) {
                 $qo->dataset[$qo->datasetindex]->itemindex++;
                 $qo->dataset[$qo->datasetindex]->datasetitem[
@@ -1048,6 +1073,10 @@ class qformat_xml extends qformat_default {
      */
     public function xml_escape($string) {
         if (!empty($string) && htmlspecialchars($string) != $string) {
+            // If the string contains something that looks like the end
+            // of a CDATA section, then we need to avoid errors by splitting
+            // the string between two CDATA sections.
+            $string = str_replace(']]>', ']]]]><![CDATA[>', $string);
             return "<![CDATA[{$string}]]>";
         } else {
             return $string;
@@ -1066,9 +1095,9 @@ class qformat_xml extends qformat_default {
         $raw = $this->xml_escape($raw);
 
         if ($short) {
-            $xml = "$indent<text>$raw</text>\n";
+            $xml = "{$indent}<text>{$raw}</text>\n";
         } else {
-            $xml = "$indent<text>\n$raw\n$indent</text>\n";
+            $xml = "{$indent}<text>\n{$raw}\n{$indent}</text>\n";
         }
 
         return $xml;
@@ -1088,9 +1117,9 @@ class qformat_xml extends qformat_default {
             if ($file->is_directory()) {
                 continue;
             }
-            $string .= '<file name="' . $file->get_filename() . '" encoding="base64">';
+            $string .= '<file name="' . $file->get_filename() . '" path="' . $file->get_filepath() . '" encoding="base64">';
             $string .= base64_encode($file->get_content());
-            $string .= '</file>';
+            $string .= "</file>\n";
         }
         return $string;
     }
@@ -1131,7 +1160,7 @@ class qformat_xml extends qformat_default {
         $expout = '';
 
         // Add a comment linking this to the original question id.
-        $expout .= "<!-- question: $question->id  -->\n";
+        $expout .= "<!-- question: {$question->id}  -->\n";
 
         // Check question type.
         $questiontype = $this->get_qtype($question->qtype);
@@ -1141,7 +1170,7 @@ class qformat_xml extends qformat_default {
             $categorypath = $this->writetext($question->category);
             $expout .= "  <question type=\"category\">\n";
             $expout .= "    <category>\n";
-            $expout .= "        $categorypath\n";
+            $expout .= "        {$categorypath}\n";
             $expout .= "    </category>\n";
             $expout .= "  </question>\n";
             return $expout;
@@ -1149,7 +1178,7 @@ class qformat_xml extends qformat_default {
 
         // Now we know we are are handing a real question.
         // Output the generic information.
-        $expout .= "  <question type=\"$questiontype\">\n";
+        $expout .= "  <question type=\"{$questiontype}\">\n";
         $expout .= "    <name>\n";
         $expout .= $this->writetext($question->name, 3);
         $expout .= "    </name>\n";
@@ -1203,7 +1232,7 @@ class qformat_xml extends qformat_default {
             case 'numerical':
                 foreach ($question->options->answers as $answer) {
                     $expout .= $this->write_answer($answer,
-                            "      <tolerance>$answer->tolerance</tolerance>\n");
+                            "      <tolerance>{$answer->tolerance}</tolerance>\n");
                 }
 
                 $units = $question->options->units;
@@ -1266,17 +1295,21 @@ class qformat_xml extends qformat_default {
 
             case 'multianswer':
                 foreach ($question->options->questions as $index => $subq) {
-                    $expout = preg_replace('~{#' . $index . '}~', $subq->questiontext, $expout);
+                    $expout = str_replace('{#' . $index . '}', $subq->questiontext, $expout);
                 }
                 break;
 
             case 'essay':
                 $expout .= "    <responseformat>" . $question->options->responseformat .
                         "</responseformat>\n";
+                $expout .= "    <responserequired>" . $question->options->responserequired .
+                        "</responserequired>\n";
                 $expout .= "    <responsefieldlines>" . $question->options->responsefieldlines .
                         "</responsefieldlines>\n";
                 $expout .= "    <attachments>" . $question->options->attachments .
                         "</attachments>\n";
+                $expout .= "    <attachmentsrequired>" . $question->options->attachmentsrequired .
+                        "</attachmentsrequired>\n";
                 $expout .= "    <graderinfo " .
                         $this->format($question->options->graderinfoformat) . ">\n";
                 $expout .= $this->writetext($question->options->graderinfo, 3);
@@ -1323,7 +1356,7 @@ class qformat_xml extends qformat_default {
 
                 foreach ($question->options->answers as $answer) {
                     $percent = 100 * $answer->fraction;
-                    $expout .= "<answer fraction=\"$percent\">\n";
+                    $expout .= "<answer fraction=\"{$percent}\">\n";
                     // The "<text/>" tags are an added feature, old files won't have them.
                     $expout .= "    <text>{$answer->answer}</text>\n";
                     $expout .= "    <tolerance>{$answer->tolerance}</tolerance>\n";
@@ -1402,7 +1435,7 @@ class qformat_xml extends qformat_default {
                                 "</maximum>\n";
                         $expout .= "    <decimals>" . $this->writetext($def->decimals) .
                                 "</decimals>\n";
-                        $expout .= "    <itemcount>$def->itemcount</itemcount>\n";
+                        $expout .= "    <itemcount>{$def->itemcount}</itemcount>\n";
                         if ($def->itemcount > 0) {
                             $expout .= "    <dataset_items>\n";
                             foreach ($def->items as $item) {
@@ -1434,16 +1467,13 @@ class qformat_xml extends qformat_default {
         $expout .= $this->write_hints($question);
 
         // Write the question tags.
-        if (!empty($CFG->usetags)) {
-            require_once($CFG->dirroot.'/tag/lib.php');
-            $tags = tag_get_tags_array('question', $question->id);
-            if (!empty($tags)) {
-                $expout .= "    <tags>\n";
-                foreach ($tags as $tag) {
-                    $expout .= "      <tag>" . $this->writetext($tag, 0, true) . "</tag>\n";
-                }
-                $expout .= "    </tags>\n";
+        $tags = core_tag_tag::get_item_tags_array('core_question', 'question', $question->id);
+        if (!empty($tags)) {
+            $expout .= "    <tags>\n";
+            foreach ($tags as $tag) {
+                $expout .= "      <tag>" . $this->writetext($tag, 0, true) . "</tag>\n";
             }
+            $expout .= "    </tags>\n";
         }
 
         // Close the question tag.
@@ -1469,7 +1499,7 @@ class qformat_xml extends qformat_default {
     public function write_answer($answer, $extra = '') {
         $percent = $answer->fraction * 100;
         $output = '';
-        $output .= "    <answer fraction=\"$percent\" {$this->format($answer->answerformat)}>\n";
+        $output .= "    <answer fraction=\"{$percent}\" {$this->format($answer->answerformat)}>\n";
         $output .= $this->writetext($answer->answer, 3);
         $output .= $this->write_files($answer->answerfiles);
         $output .= "      <feedback {$this->format($answer->feedbackformat)}>\n";

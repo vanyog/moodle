@@ -509,6 +509,93 @@ class core_ddl_testcase extends database_driver_testcase {
     }
 
     /**
+     * Test if database supports tables with many TEXT fields,
+     * InnoDB is known to failed during data insertion instead
+     * of table creation when text fields contain actual data.
+     */
+    public function test_row_size_limits() {
+
+        $DB = $this->tdb; // Do not use global $DB!
+        $dbman = $this->tdb->get_manager();
+
+        $text = str_repeat('š', 1333);
+
+        $data = new stdClass();
+        $data->name = 'test';
+        $table = new xmldb_table('test_innodb');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('name', XMLDB_TYPE_CHAR, '30', null, null, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        for ($i = 0; $i < 20; $i++) {
+            $table->add_field('text'.$i, XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $data->{'text'.$i} = $text;
+        }
+        $dbman->create_table($table);
+
+        try {
+            $id = $DB->insert_record('test_innodb', $data);
+            $expected = (array)$data;
+            $expected['id'] = (string)$id;
+            $this->assertEquals($expected, (array)$DB->get_record('test_innodb', array('id' => $id)), '', 0, 10, true);
+        } catch (dml_exception $e) {
+            // Give some nice error message when known problematic MySQL with InnoDB detected.
+            if ($DB->get_dbfamily() === 'mysql') {
+                $engine = strtolower($DB->get_dbengine());
+                if ($engine === 'innodb' or $engine === 'xtradb') {
+                    if (!$DB->is_compressed_row_format_supported()) {
+                        $this->fail("Row size limit reached in MySQL using InnoDB, configure server to use innodb_file_format=Barracuda and innodb_file_per_table=1");
+                    }
+                }
+            }
+            throw $e;
+        }
+
+        $dbman->drop_table($table);
+
+        $data = new stdClass();
+        $data->name = 'test';
+        $table = new xmldb_table('test_innodb');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('name', XMLDB_TYPE_CHAR, '30', null, null, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $dbman->create_table($table);
+        $DB->insert_record('test_innodb', array('name' => 'test'));
+
+        for ($i = 0; $i < 20; $i++) {
+            $field = new xmldb_field('text'.$i, XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $dbman->add_field($table, $field);
+            $data->{'text'.$i} = $text;
+
+            $id = $DB->insert_record('test_innodb', $data);
+            $expected = (array)$data;
+            $expected['id'] = (string)$id;
+            $this->assertEquals($expected, (array)$DB->get_record('test_innodb', array('id' => $id)), '', 0, 10, true);
+        }
+
+        $dbman->drop_table($table);
+
+        // MySQL VARCHAR fields may hit a different 65535 row size limit when creating tables.
+        $data = new stdClass();
+        $data->name = 'test';
+        $table = new xmldb_table('test_innodb');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('name', XMLDB_TYPE_CHAR, '30', null, null, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        for ($i = 0; $i < 15; $i++) {
+            $table->add_field('text'.$i, XMLDB_TYPE_CHAR, '1333', null, null, null, null);
+            $data->{'text'.$i} = $text;
+        }
+        $dbman->create_table($table);
+
+        $id = $DB->insert_record('test_innodb', $data);
+        $expected = (array)$data;
+        $expected['id'] = (string)$id;
+        $this->assertEquals($expected, (array)$DB->get_record('test_innodb', array('id' => $id)), '', 0, 10, true);
+
+        $dbman->drop_table($table);
+    }
+
+    /**
      * Test behaviour of drop_table()
      */
     public function test_drop_table() {
@@ -563,6 +650,17 @@ class core_ddl_testcase extends database_driver_testcase {
             'secondname' => 'not important',
             'intro'      => 'not important');
         $this->assertSame($insertedrows+1, $DB->insert_record('test_table_cust1', $rec));
+
+        // Verify behavior when target table already exists.
+        $sourcetable = $this->create_deftable('test_table0');
+        $targettable = $this->create_deftable('test_table1');
+        try {
+            $dbman->rename_table($sourcetable, $targettable->getName());
+            $this->fail('Exception expected');
+        } catch (moodle_exception $e) {
+            $this->assertInstanceOf('ddl_exception', $e);
+            $this->assertEquals('Table "test_table1" already exists (can not rename table)', $e->getMessage());
+        }
     }
 
     /**
@@ -697,6 +795,16 @@ class core_ddl_testcase extends database_driver_testcase {
         $this->assertEquals(2.550, $columns['onenumber']->default_value);
         $this->assertSame('N', $columns['onenumber']->meta_type);
         $this->assertEquals(2.550, $DB->get_field('test_table1', 'onenumber', array(), IGNORE_MULTIPLE)); // Check default has been applied.
+
+        // Add one numeric field with scale of 0 and check it.
+        $field = new xmldb_field('onenumberwith0scale');
+        $field->set_attributes(XMLDB_TYPE_NUMBER, '6,0', null, XMLDB_NOTNULL, null, 2);
+        $dbman->add_field($table, $field);
+        $this->assertTrue($dbman->field_exists($table, 'onenumberwith0scale'));
+        $columns = $DB->get_columns('test_table1');
+        $this->assertEquals(6, $columns['onenumberwith0scale']->max_length);
+        // We can not use assertEquals as that accepts null/false as a valid value.
+        $this->assertSame('0', strval($columns['onenumberwith0scale']->scale));
 
         // Add one float field and check it (not official type - must work as number).
         $field = new xmldb_field('onefloat');
@@ -1535,6 +1643,9 @@ class core_ddl_testcase extends database_driver_testcase {
         $this->assertSame($records[1]->secondname, $this->records['test_table1'][0]->secondname);
         $this->assertSame($records[2]->intro, $this->records['test_table1'][1]->intro);
 
+        // Collect statistics about the data in the temp table.
+        $DB->update_temp_table_stats();
+
         // Drop table1.
         $dbman->drop_table($table1);
         $this->assertFalse($dbman->table_exists('test_table1'));
@@ -1547,6 +1658,9 @@ class core_ddl_testcase extends database_driver_testcase {
         } catch (moodle_exception $e) {
             $this->assertInstanceOf('ddl_table_missing_exception', $e);
         }
+
+        // Collect statistics about the data in the temp table with less tables.
+        $DB->update_temp_table_stats();
 
         // Fill/modify/delete a few table0 records.
 
@@ -1563,6 +1677,39 @@ class core_ddl_testcase extends database_driver_testcase {
         $dbman->drop_temp_table($table1);
         $this->assertFalse($dbman->table_exists('test_table1'));
         $this->assertDebuggingCalled();
+
+        // Try join with normal tables - MS SQL may use incompatible collation.
+        $table1 = new xmldb_table('test_table');
+        $table1->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table1->add_field('name', XMLDB_TYPE_CHAR, 255, null, XMLDB_NOTNULL, null);
+        $table1->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $dbman->create_table($table1);
+
+        $table2 = new xmldb_table('test_temp');
+        $table2->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table2->add_field('name', XMLDB_TYPE_CHAR, 255, null, XMLDB_NOTNULL, null);
+        $table2->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $dbman->create_temp_table($table2);
+
+        $record = array('name' => 'a');
+        $DB->insert_record('test_table', $record);
+        $DB->insert_record('test_temp', $record);
+
+        $record = array('name' => 'b');
+        $DB->insert_record('test_table', $record);
+
+        $record = array('name' => 'c');
+        $DB->insert_record('test_temp', $record);
+
+        $sql = "SELECT *
+                  FROM {test_table} n
+                  JOIN {test_temp} t ON t.name = n.name";
+        $records = $DB->get_records_sql($sql);
+        $this->assertCount(1, $records);
+
+        // Drop temp table.
+        $dbman->drop_table($table2);
+        $this->assertFalse($dbman->table_exists('test_temp'));
     }
 
     public function test_concurrent_temp_tables() {
@@ -1639,7 +1786,8 @@ class core_ddl_testcase extends database_driver_testcase {
         $DB->delete_records('testtable', array()); // This delete performs one DELETE.
 
         $dbman->reset_sequence($table); // Using xmldb object.
-        $this->assertEquals(1, $DB->insert_record('testtable', (object)array('course'=>13)));
+        $this->assertEquals(1, $DB->insert_record('testtable', (object)array('course'=>13)),
+            'Some versions of MySQL 5.6.x are known to not support lowering of auto-increment numbers.');
 
         $DB->import_record('testtable', $record);
         $dbman->reset_sequence($tablename); // Using string.
@@ -1876,6 +2024,59 @@ class core_ddl_testcase extends database_driver_testcase {
             $this->fail('Exception expected');
         } catch (moodle_exception $e) {
             $this->assertInstanceOf('coding_exception', $e);
+        }
+    }
+
+    public function test_object_name() {
+        $gen = $this->tdb->get_manager()->generator;
+
+        // This will form short object name and max length should not be exceeded.
+        $table = 'tablename';
+        $fields = 'id';
+        $suffix = 'pk';
+        for ($i=0; $i<12; $i++) {
+            $this->assertLessThanOrEqual($gen->names_max_length,
+                    strlen($gen->getNameForObject($table, $fields, $suffix)),
+                    'Generated object name is too long. $i = '.$i);
+        }
+
+        // This will form too long object name always and it must be trimmed to exactly 30 chars.
+        $table = 'aaaa_bbbb_cccc_dddd_eeee_ffff_gggg';
+        $fields = 'aaaaa,bbbbb,ccccc,ddddd';
+        $suffix = 'idx';
+        for ($i=0; $i<12; $i++) {
+            $this->assertEquals($gen->names_max_length,
+                    strlen($gen->getNameForObject($table, $fields, $suffix)),
+                    'Generated object name is too long. $i = '.$i);
+        }
+
+        // Same test without suffix.
+        $table = 'bbbb_cccc_dddd_eeee_ffff_gggg_hhhh';
+        $fields = 'aaaaa,bbbbb,ccccc,ddddd';
+        $suffix = '';
+        for ($i=0; $i<12; $i++) {
+            $this->assertEquals($gen->names_max_length,
+                    strlen($gen->getNameForObject($table, $fields, $suffix)),
+                    'Generated object name is too long. $i = '.$i);
+        }
+
+        // This must only trim name when counter is 10 or more.
+        $table = 'cccc_dddd_eeee_ffff_gggg_hhhh_iiii';
+        $fields = 'id';
+        $suffix = 'idx';
+        // Since we don't know how long prefix is, loop to generate tablename that gives exactly maxlengh-1 length.
+        // Skip this test if prefix is too long.
+        while (strlen($table) && strlen($gen->prefix.preg_replace('/_/','',$table).'_id_'.$suffix) >= $gen->names_max_length) {
+            $table = rtrim(substr($table, 0, strlen($table) - 1), '_');
+        }
+        if (strlen($table)) {
+            $this->assertEquals($gen->names_max_length - 1,
+                        strlen($gen->getNameForObject($table, $fields, $suffix)));
+            for ($i=0; $i<12; $i++) {
+                $this->assertEquals($gen->names_max_length,
+                        strlen($gen->getNameForObject($table, $fields, $suffix)),
+                        'Generated object name is too long. $i = '.$i);
+            }
         }
     }
 

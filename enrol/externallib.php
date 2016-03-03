@@ -113,6 +113,7 @@ class core_enrol_external extends external_api {
                     foreach ($thefields as $f) {
                         $userfields[] = clean_param($f, PARAM_ALPHANUMEXT);
                     }
+                    break;
                 case 'limitfrom' :
                     $limitfrom = clean_param($option['value'], PARAM_INT);
                     break;
@@ -298,7 +299,8 @@ class core_enrol_external extends external_api {
         // If any problems are found then exceptions are thrown with helpful error messages
         $params = self::validate_parameters(self::get_users_courses_parameters(), array('userid'=>$userid));
 
-        $courses = enrol_get_users_courses($params['userid'], true, 'id, shortname, fullname, idnumber, visible');
+        $courses = enrol_get_users_courses($params['userid'], true, 'id, shortname, fullname, idnumber, visible,
+                   summary, summaryformat, format, showgrades, lang, enablecompletion');
         $result = array();
 
         foreach ($courses as $course) {
@@ -319,7 +321,14 @@ class core_enrol_external extends external_api {
             $enrolledsql = "SELECT COUNT('x') FROM ($enrolledsqlselect) enrolleduserids";
             $enrolledusercount = $DB->count_records_sql($enrolledsql, $enrolledparams);
 
-            $result[] = array('id'=>$course->id, 'shortname'=>$course->shortname, 'fullname'=>$course->fullname, 'idnumber'=>$course->idnumber,'visible'=>$course->visible, 'enrolledusercount'=>$enrolledusercount);
+            list($course->summary, $course->summaryformat) =
+                external_format_text($course->summary, $course->summaryformat, $context->id, 'course', 'summary', null);
+
+            $result[] = array('id' => $course->id, 'shortname' => $course->shortname, 'fullname' => $course->fullname,
+                'idnumber' => $course->idnumber, 'visible' => $course->visible, 'enrolledusercount' => $enrolledusercount,
+                'summary' => $course->summary, 'summaryformat' => $course->summaryformat, 'format' => $course->format,
+                'showgrades' => $course->showgrades, 'lang' => $course->lang, 'enablecompletion' => $course->enablecompletion
+                );
         }
 
         return $result;
@@ -340,6 +349,13 @@ class core_enrol_external extends external_api {
                     'enrolledusercount' => new external_value(PARAM_INT, 'Number of enrolled users in this course'),
                     'idnumber'  => new external_value(PARAM_RAW, 'id number of course'),
                     'visible'   => new external_value(PARAM_INT, '1 means visible, 0 means hidden course'),
+                    'summary'   => new external_value(PARAM_RAW, 'summary', VALUE_OPTIONAL),
+                    'summaryformat' => new external_format_value('summary', VALUE_OPTIONAL),
+                    'format'    => new external_value(PARAM_PLUGIN, 'course format: weeks, topics, social, site', VALUE_OPTIONAL),
+                    'showgrades' => new external_value(PARAM_BOOL, 'true if grades are shown, otherwise false', VALUE_OPTIONAL),
+                    'lang'      => new external_value(PARAM_LANG, 'forced course language', VALUE_OPTIONAL),
+                    'enablecompletion' => new external_value(PARAM_BOOL, 'true if completion is enabled, otherwise false',
+                                                                VALUE_OPTIONAL)
                 )
             )
         );
@@ -362,11 +378,17 @@ class core_enrol_external extends external_api {
                         )
                     ), 'Option names:
                             * withcapability (string) return only users with this capability. This option requires \'moodle/role:review\' on the course context.
-                            * groupid (integer) return only users in this group id. This option requires \'moodle/site:accessallgroups\' on the course context.
+                            * groupid (integer) return only users in this group id. If the course has groups enabled and this param
+                                                isn\'t defined, returns all the viewable users.
+                                                This option requires \'moodle/site:accessallgroups\' on the course context if the
+                                                user doesn\'t belong to the group.
                             * onlyactive (integer) return only users with active enrolments and matching time restrictions. This option requires \'moodle/course:enrolreview\' on the course context.
                             * userfields (\'string, string, ...\') return only the values of these user fields.
                             * limitfrom (integer) sql limit from.
-                            * limitnumber (integer) maximum number of returned users.', VALUE_DEFAULT, array()),
+                            * limitnumber (integer) maximum number of returned users.
+                            * sortby (string) sort by id, firstname or lastname. For ordering like the site does, use siteorder.
+                            * sortdirection (string) ASC or DESC',
+                            VALUE_DEFAULT, array()),
             )
         );
     }
@@ -398,6 +420,9 @@ class core_enrol_external extends external_api {
         $userfields     = array();
         $limitfrom = 0;
         $limitnumber = 0;
+        $sortby = 'us.id';
+        $sortparams = array();
+        $sortdirection = 'ASC';
         foreach ($options as $option) {
             switch ($option['name']) {
             case 'withcapability':
@@ -414,11 +439,32 @@ class core_enrol_external extends external_api {
                 foreach ($thefields as $f) {
                     $userfields[] = clean_param($f, PARAM_ALPHANUMEXT);
                 }
+                break;
             case 'limitfrom' :
                 $limitfrom = clean_param($option['value'], PARAM_INT);
                 break;
             case 'limitnumber' :
                 $limitnumber = clean_param($option['value'], PARAM_INT);
+                break;
+            case 'sortby':
+                $sortallowedvalues = array('id', 'firstname', 'lastname', 'siteorder');
+                if (!in_array($option['value'], $sortallowedvalues)) {
+                    throw new invalid_parameter_exception('Invalid value for sortby parameter (value: ' . $option['value'] . '),' .
+                        'allowed values are: ' . implode(',', $sortallowedvalues));
+                }
+                if ($option['value'] == 'siteorder') {
+                    list($sortby, $sortparams) = users_order_by_sql('us');
+                } else {
+                    $sortby = 'us.' . $option['value'];
+                }
+                break;
+            case 'sortdirection':
+                $sortdirection = strtoupper($option['value']);
+                $directionallowedvalues = array('ASC', 'DESC');
+                if (!in_array($sortdirection, $directionallowedvalues)) {
+                    throw new invalid_parameter_exception('Invalid value for sortdirection parameter
+                        (value: ' . $sortdirection . '),' . 'allowed values are: ' . implode(',', $directionallowedvalues));
+                }
                 break;
             }
         }
@@ -449,7 +495,7 @@ class core_enrol_external extends external_api {
             require_capability('moodle/role:review', $coursecontext);
         }
         // need accessallgroups capability if you want to overwrite this option
-        if (!empty($groupid) && groups_is_member($groupid)) {
+        if (!empty($groupid) && !groups_is_member($groupid)) {
             require_capability('moodle/site:accessallgroups', $coursecontext);
         }
         // to overwrite this option, you need course:enrolereview permission
@@ -461,10 +507,30 @@ class core_enrol_external extends external_api {
         $ctxselect = ', ' . context_helper::get_preload_record_columns_sql('ctx');
         $ctxjoin = "LEFT JOIN {context} ctx ON (ctx.instanceid = u.id AND ctx.contextlevel = :contextlevel)";
         $enrolledparams['contextlevel'] = CONTEXT_USER;
-        $sql = "SELECT u.* $ctxselect
-                  FROM {user} u $ctxjoin
-                 WHERE u.id IN ($enrolledsql)
-                 ORDER BY u.id ASC";
+
+        $groupjoin = '';
+        if (empty($groupid) && groups_get_course_groupmode($course) == SEPARATEGROUPS &&
+                !has_capability('moodle/site:accessallgroups', $coursecontext)) {
+            // Filter by groups the user can view.
+            $usergroups = groups_get_user_groups($course->id);
+            if (!empty($usergroups['0'])) {
+                list($groupsql, $groupparams) = $DB->get_in_or_equal($usergroups['0'], SQL_PARAMS_NAMED);
+                $groupjoin = "JOIN {groups_members} gm ON (u.id = gm.userid AND gm.groupid $groupsql)";
+                $enrolledparams = array_merge($enrolledparams, $groupparams);
+            } else {
+                // User doesn't belong to any group, so he can't see any user. Return an empty array.
+                return array();
+            }
+        }
+        $sql = "SELECT us.*
+                  FROM {user} us
+                  JOIN (
+                      SELECT DISTINCT u.id $ctxselect
+                        FROM {user} u $ctxjoin $groupjoin
+                       WHERE u.id IN ($enrolledsql)
+                  ) q ON q.id = us.id
+                ORDER BY $sortby $sortdirection";
+        $enrolledparams = array_merge($enrolledparams, $sortparams);
         $enrolledusers = $DB->get_recordset_sql($sql, $enrolledparams, $limitfrom, $limitnumber);
         $users = array();
         foreach ($enrolledusers as $user) {
@@ -579,14 +645,21 @@ class core_enrol_external extends external_api {
      *
      * @param int $courseid
      * @return array of course enrolment methods
+     * @throws moodle_exception
      */
     public static function get_course_enrolment_methods($courseid) {
+        global $DB;
 
         $params = self::validate_parameters(self::get_course_enrolment_methods_parameters(), array('courseid' => $courseid));
 
-        $coursecontext = context_course::instance($params['courseid']);
-        $categorycontext = $coursecontext->get_parent_context();
-        self::validate_context($categorycontext);
+        // Note that we can't use validate_context because the user is not enrolled in the course.
+        require_login(null, false, null, false, true);
+
+        $course = $DB->get_record('course', array('id' => $params['courseid']), '*', MUST_EXIST);
+        $context = context_course::instance($course->id);
+        if (!$course->visible and !has_capability('moodle/course:viewhiddencourses', $context)) {
+            throw new moodle_exception('coursehidden');
+        }
 
         $result = array();
         $enrolinstances = enrol_get_instances($params['courseid'], true);
@@ -921,6 +994,15 @@ class moodle_enrol_external extends external_api {
     }
 
     /**
+     * Marking the method as deprecated.
+     *
+     * @return bool
+     */
+    public static function get_enrolled_users_is_deprecated() {
+        return true;
+    }
+
+    /**
      * Returns description of method parameters
      *
      * @return external_function_parameters
@@ -958,6 +1040,14 @@ class moodle_enrol_external extends external_api {
         return core_enrol_external::get_users_courses_returns();
     }
 
+    /**
+     * Marking the method as deprecated.
+     *
+     * @return bool
+     */
+    public static function get_users_courses_is_deprecated() {
+        return true;
+    }
 
     /**
      * Returns description of method parameters
@@ -995,6 +1085,14 @@ class moodle_enrol_external extends external_api {
         return core_role_external::assign_roles_returns();
     }
 
+    /**
+     * Marking the method as deprecated.
+     *
+     * @return bool
+     */
+    public static function role_assign_is_deprecated() {
+        return true;
+    }
 
     /**
      * Returns description of method parameters
@@ -1030,5 +1128,14 @@ class moodle_enrol_external extends external_api {
      */
     public static function role_unassign_returns() {
         return core_role_external::unassign_roles_returns();
+    }
+
+    /**
+     * Marking the method as deprecated.
+     *
+     * @return bool
+     */
+    public static function role_unassign_is_deprecated() {
+        return true;
     }
 }

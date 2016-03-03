@@ -17,9 +17,9 @@
 /**
  * This file contains all necessary code to get a printable version of a wiki page
  *
- * @package mod-wiki-2.0
- * @copyrigth 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
- * @copyrigth 2009 Universitat Politecnica de Catalunya http://www.upc.edu
+ * @package mod_wiki
+ * @copyright 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
+ * @copyright 2009 Universitat Politecnica de Catalunya http://www.upc.edu
  *
  * @author Jordi Piguillem
  * @author Marc Alier
@@ -53,13 +53,18 @@ if (!$wiki = wiki_get_wiki($subwiki->wikiid)) {
 
 require_login($course, true, $cm);
 
-$context = context_module::instance($cm->id);
-require_capability('mod/wiki:viewpage', $context);
+if (!wiki_user_can_view($subwiki, $wiki)) {
+    print_error('cannotviewpage', 'wiki');
+}
 
 $wikipage = new page_wiki_prettyview($wiki, $subwiki, $cm);
 
 $wikipage->set_page($page);
-add_to_log($course->id, "wiki", "view", "prettyview.php?pageid=".$pageid, $pageid, $cm->id);
+
+$context = context_module::instance($cm->id);
+
+$other = array('prettyview' => true);
+wiki_page_view($wiki, $page, $course, $cm, $context, null, $other, $subwiki);
 
 $wikipage->print_header();
 $wikipage->print_content();

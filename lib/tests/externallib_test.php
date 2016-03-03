@@ -72,6 +72,57 @@ class core_externallib_testcase extends advanced_testcase {
         $this->assertSame('aaa', $result['text']);
     }
 
+    public function test_external_format_text() {
+        $settings = external_settings::get_instance();
+
+        $currentraw = $settings->get_raw();
+        $currentfilter = $settings->get_filter();
+
+        $settings->set_raw(true);
+        $settings->set_filter(false);
+        $context = context_system::instance();
+
+        $test = '$$ \pi $$';
+        $testformat = FORMAT_MARKDOWN;
+        $correct = array($test, $testformat);
+        $this->assertSame(external_format_text($test, $testformat, $context->id, 'core', '', 0), $correct);
+
+        $settings->set_raw(false);
+        $settings->set_filter(true);
+
+        $test = '$$ \pi $$';
+        $testformat = FORMAT_MARKDOWN;
+        $correct = array('<span class="nolink"><span class="filter_mathjaxloader_equation"><p>$$ \pi $$</p>
+</span></span>', FORMAT_HTML);
+        $this->assertSame(external_format_text($test, $testformat, $context->id, 'core', '', 0), $correct);
+
+        $settings->set_raw($currentraw);
+        $settings->set_filter($currentfilter);
+    }
+
+    public function test_external_format_string() {
+        $settings = external_settings::get_instance();
+
+        $currentraw = $settings->get_raw();
+        $currentfilter = $settings->get_filter();
+
+        $settings->set_raw(true);
+        $context = context_system::instance();
+
+        $test = '$$ \pi $$ <script>hi</script> <h3>there</h3>';
+        $correct = $test;
+        $this->assertSame(external_format_string($test, $context->id), $correct);
+
+        $settings->set_raw(false);
+
+        $test = '$$ \pi $$<script>hi</script> <h3>there</h3>';
+        $correct = '$$ \pi $$hi there';
+        $this->assertSame(external_format_string($test, $context->id), $correct);
+
+        $settings->set_raw($currentraw);
+        $settings->set_filter($currentfilter);
+    }
+
     /**
      * Test for clean_returnvalue().
      */
@@ -147,6 +198,33 @@ class core_externallib_testcase extends advanced_testcase {
         $fetchedcontext = test_exernal_api::get_context_wrapper(array("contextlevel" => "course", "instanceid" => $course->id));
         $this->assertEquals($realcontext, $fetchedcontext);
 
+        // Passing empty values.
+        try {
+            $fetchedcontext = test_exernal_api::get_context_wrapper(array("contextid" => 0));
+            $this->fail('Exception expected from get_context_wrapper()');
+        } catch (moodle_exception $e) {
+            $this->assertInstanceOf('invalid_parameter_exception', $e);
+        }
+
+        try {
+            $fetchedcontext = test_exernal_api::get_context_wrapper(array("instanceid" => 0));
+            $this->fail('Exception expected from get_context_wrapper()');
+        } catch (moodle_exception $e) {
+            $this->assertInstanceOf('invalid_parameter_exception', $e);
+        }
+
+        try {
+            $fetchedcontext = test_exernal_api::get_context_wrapper(array("contextid" => null));
+            $this->fail('Exception expected from get_context_wrapper()');
+        } catch (moodle_exception $e) {
+            $this->assertInstanceOf('invalid_parameter_exception', $e);
+        }
+
+        // Tests for context with instanceid equal to 0 (System context).
+        $realcontext = context_system::instance();
+        $fetchedcontext = test_exernal_api::get_context_wrapper(array("contextlevel" => "system", "instanceid" => 0));
+        $this->assertEquals($realcontext, $fetchedcontext);
+
         // Passing wrong level.
         $this->setExpectedException('invalid_parameter_exception');
         $fetchedcontext = test_exernal_api::get_context_wrapper(array("contextlevel" => "random", "instanceid" => $course->id));
@@ -185,6 +263,96 @@ class core_externallib_testcase extends advanced_testcase {
         $course = self::getDataGenerator()->create_course();
         $this->setExpectedException('invalid_parameter_exception');
         test_exernal_api::get_context_wrapper(array('roleid' => 3, 'userid' => $USER->id, 'instanceid' => $course->id));
+    }
+
+    public function all_external_info_provider() {
+        global $DB;
+
+        // We are testing here that all the external function descriptions can be generated without
+        // producing warnings. E.g. misusing optional params will generate a debugging message which
+        // will fail this test.
+        $functions = $DB->get_records('external_functions', array(), 'name');
+        $return = array();
+        foreach ($functions as $f) {
+            $return[$f->name] = array($f);
+        }
+        return $return;
+    }
+
+    /**
+     * @dataProvider all_external_info_provider
+     */
+    public function test_all_external_info($f) {
+        $desc = external_function_info($f);
+        $this->assertNotEmpty($desc->name);
+        $this->assertNotEmpty($desc->classname);
+        $this->assertNotEmpty($desc->methodname);
+        $this->assertEquals($desc->component, clean_param($desc->component, PARAM_COMPONENT));
+        $this->assertInstanceOf('external_function_parameters', $desc->parameters_desc);
+        if ($desc->returns_desc != null) {
+            $this->assertInstanceOf('external_description', $desc->returns_desc);
+        }
+    }
+
+    public function test_validate_courses() {
+        $this->resetAfterTest(true);
+
+        $c1 = $this->getDataGenerator()->create_course();
+        $c2 = $this->getDataGenerator()->create_course();
+        $c3 = $this->getDataGenerator()->create_course();
+        $u1 = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($u1->id, $c1->id);
+        $courseids = array($c1->id, $c2->id, $c3->id);
+
+        $this->setAdminUser();
+        list($courses, $warnings) = external_util::validate_courses($courseids);
+        $this->assertEmpty($warnings);
+        $this->assertCount(3, $courses);
+        $this->assertArrayHasKey($c1->id, $courses);
+        $this->assertArrayHasKey($c2->id, $courses);
+        $this->assertArrayHasKey($c3->id, $courses);
+        $this->assertEquals($c1->id, $courses[$c1->id]->id);
+        $this->assertEquals($c2->id, $courses[$c2->id]->id);
+        $this->assertEquals($c3->id, $courses[$c3->id]->id);
+
+        $this->setUser($u1);
+        list($courses, $warnings) = external_util::validate_courses($courseids);
+        $this->assertCount(2, $warnings);
+        $this->assertEquals($c2->id, $warnings[0]['itemid']);
+        $this->assertEquals($c3->id, $warnings[1]['itemid']);
+        $this->assertCount(1, $courses);
+        $this->assertArrayHasKey($c1->id, $courses);
+        $this->assertArrayNotHasKey($c2->id, $courses);
+        $this->assertArrayNotHasKey($c3->id, $courses);
+        $this->assertEquals($c1->id, $courses[$c1->id]->id);
+    }
+
+    /**
+     * Validate courses can re-use an array of prefetched courses.
+     */
+    public function test_validate_courses_prefetch() {
+        $this->resetAfterTest(true);
+
+        $c1 = $this->getDataGenerator()->create_course();
+        $c2 = $this->getDataGenerator()->create_course();
+        $c3 = $this->getDataGenerator()->create_course();
+        $c4 = $this->getDataGenerator()->create_course();
+        $u1 = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($u1->id, $c1->id);
+        $this->getDataGenerator()->enrol_user($u1->id, $c2->id);
+
+        $courseids = array($c1->id, $c2->id, $c3->id);
+        $courses = array($c2->id => $c2, $c3->id => $c3, $c4->id => $c4);
+
+        $this->setUser($u1);
+        list($courses, $warnings) = external_util::validate_courses($courseids, $courses);
+        $this->assertCount(2, $courses);
+        $this->assertCount(1, $warnings);
+        $this->assertArrayHasKey($c1->id, $courses);
+        $this->assertSame($c2, $courses[$c2->id]);
+        $this->assertArrayNotHasKey($c3->id, $courses);
+        // The extra course passed is not returned.
+        $this->assertArrayNotHasKey($c4->id, $courses);
     }
 }
 

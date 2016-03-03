@@ -18,33 +18,33 @@
  * Renderers to align Moodle's HTML with that expected by Bootstrap
  *
  * @package    theme_bootstrapbase
- * @copyright  2012
+ * @copyright  2012 Bas Brands, www.basbrands.nl
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 class theme_bootstrapbase_core_renderer extends core_renderer {
 
-    /*
-     * This renders a notification message.
-     * Uses bootstrap compatible html.
-     */
-    public function notification($message, $classes = 'notifyproblem') {
-        $message = clean_text($message);
-        $type = '';
+    /** @var custom_menu_item language The language menu if created */
+    protected $language = null;
 
-        if ($classes == 'notifyproblem') {
-            $type = 'alert alert-error';
+    /**
+     * The standard tags that should be included in the <head> tag
+     * including a meta description for the front page
+     *
+     * @return string HTML fragment.
+     */
+    public function standard_head_html() {
+        global $SITE, $PAGE;
+
+        $output = parent::standard_head_html();
+        if ($PAGE->pagelayout == 'frontpage') {
+            $summary = s(strip_tags(format_text($SITE->summary, FORMAT_HTML)));
+            if (!empty($summary)) {
+                $output .= "<meta name=\"description\" content=\"$summary\" />\n";
+            }
         }
-        if ($classes == 'notifysuccess') {
-            $type = 'alert alert-success';
-        }
-        if ($classes == 'notifymessage') {
-            $type = 'alert alert-info';
-        }
-        if ($classes == 'redirectmessage') {
-            $type = 'alert alert-block alert-info';
-        }
-        return "<div class=\"$type\">$message</div>";
+
+        return $output;
     }
 
     /*
@@ -53,12 +53,16 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
      */
     public function navbar() {
         $items = $this->page->navbar->get_items();
+        if (empty($items)) {
+            return '';
+        }
+
         $breadcrumbs = array();
         foreach ($items as $item) {
             $item->hideicon = true;
             $breadcrumbs[] = $this->render($item);
         }
-        $divider = '<span class="divider">/</span>';
+        $divider = '<span class="divider">'.get_separator().'</span>';
         $list_items = '<li>'.join(" $divider</li><li>", $breadcrumbs).'</li>';
         $title = '<span class="accesshide">'.get_string('pagepath').'</span>';
         return $title . "<ul class=\"breadcrumb\">$list_items</ul>";
@@ -72,8 +76,8 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
     public function custom_menu($custommenuitems = '') {
         global $CFG;
 
-        if (!empty($CFG->custommenuitems)) {
-            $custommenuitems .= $CFG->custommenuitems;
+        if (empty($custommenuitems) && !empty($CFG->custommenuitems)) {
+            $custommenuitems = $CFG->custommenuitems;
         }
         $custommenu = new custom_menu($custommenuitems, current_language());
         return $this->render_custom_menu($custommenu);
@@ -87,24 +91,24 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
     protected function render_custom_menu(custom_menu $menu) {
         global $CFG;
 
-        // TODO: eliminate this duplicated logic, it belongs in core, not
-        // here. See MDL-39565.
-        $addlangmenu = true;
         $langs = get_string_manager()->get_list_of_translations();
-        if (count($langs) < 2
-            or empty($CFG->langmenu)
-            or ($this->page->course != SITEID and !empty($this->page->course->lang))) {
-            $addlangmenu = false;
-        }
+        $haslangmenu = $this->lang_menu() != '';
 
-        if (!$menu->has_children() && $addlangmenu === false) {
+        if (!$menu->has_children() && !$haslangmenu) {
             return '';
         }
 
-        if ($addlangmenu) {
-            $language = $menu->add(get_string('language'), new moodle_url('#'), get_string('language'), 10000);
+        if ($haslangmenu) {
+            $strlang =  get_string('language');
+            $currentlang = current_language();
+            if (isset($langs[$currentlang])) {
+                $currentlang = $langs[$currentlang];
+            } else {
+                $currentlang = $strlang;
+            }
+            $this->language = $menu->add($currentlang, new moodle_url('#'), $strlang, 10000);
             foreach ($langs as $langtype => $langname) {
-                $language->add($langname, new moodle_url($this->page->url, array('lang' => $langtype)), $langname);
+                $this->language->add($langname, new moodle_url($this->page->url, array('lang' => $langtype)), $langname);
             }
         }
 
@@ -123,15 +127,19 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
     protected function render_custom_menu_item(custom_menu_item $menunode, $level = 0 ) {
         static $submenucount = 0;
 
+        $content = '';
         if ($menunode->has_children()) {
 
             if ($level == 1) {
-                $dropdowntype = 'dropdown';
+                $class = 'dropdown';
             } else {
-                $dropdowntype = 'dropdown-submenu';
+                $class = 'dropdown-submenu';
             }
 
-            $content = html_writer::start_tag('li', array('class'=>$dropdowntype));
+            if ($menunode === $this->language) {
+                $class .= ' langmenu';
+            }
+            $content = html_writer::start_tag('li', array('class' => $class));
             // If the child has menus render it as a sub menu.
             $submenucount++;
             if ($menunode->get_url() !== null) {
@@ -151,16 +159,47 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
             }
             $content .= '</ul>';
         } else {
-            $content = '<li>';
             // The node doesn't have children so produce a final menuitem.
-            if ($menunode->get_url() !== null) {
-                $url = $menunode->get_url();
+            // Also, if the node's text matches '####', add a class so we can treat it as a divider.
+            if (preg_match("/^#+$/", $menunode->get_text())) {
+                // This is a divider.
+                $content = '<li class="divider">&nbsp;</li>';
             } else {
-                $url = '#';
+                $content = '<li>';
+                if ($menunode->get_url() !== null) {
+                    $url = $menunode->get_url();
+                } else {
+                    $url = '#';
+                }
+                $content .= html_writer::link($url, $menunode->get_text(), array('title' => $menunode->get_title()));
+                $content .= '</li>';
             }
-            $content .= html_writer::link($url, $menunode->get_text(), array('title'=>$menunode->get_title()));
         }
         return $content;
+    }
+
+    /**
+     * This code renders the navbar button to control the display of the custom menu
+     * on smaller screens.
+     *
+     * Do not display the button if the menu is empty.
+     *
+     * @return string HTML fragment
+     */
+    protected function navbar_button() {
+        global $CFG;
+
+        if (empty($CFG->custommenuitems) && $this->lang_menu() == '') {
+            return '';
+        }
+
+        $iconbar = html_writer::tag('span', '', array('class' => 'icon-bar'));
+        $button = html_writer::tag('a', $iconbar . "\n" . $iconbar. "\n" . $iconbar, array(
+            'class'       => 'btn btn-navbar',
+            'data-toggle' => 'collapse',
+            'data-target' => '.nav-collapse'
+        ));
+        return $button;
     }
 
     /**
@@ -193,7 +232,7 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
      * @return string HTML fragment
      */
     protected function render_tabobject(tabobject $tab) {
-        if ($tab->selected or $tab->activated) {
+        if (($tab->selected and (!$tab->linkedwhenselected)) or $tab->activated) {
             return html_writer::tag('li', html_writer::tag('a', $tab->text), array('class' => 'active'));
         } else if ($tab->inactive) {
             return html_writer::tag('li', html_writer::tag('a', $tab->text), array('class' => 'disabled'));
@@ -204,7 +243,23 @@ class theme_bootstrapbase_core_renderer extends core_renderer {
             } else {
                 $link = html_writer::link($tab->link, $tab->text, array('title' => $tab->title));
             }
-            return html_writer::tag('li', $link);
+            $params = $tab->selected ? array('class' => 'active') : null;
+            return html_writer::tag('li', $link, $params);
         }
     }
+}
+
+/**
+ * Overridden core maintenance renderer.
+ *
+ * This renderer gets used instead of the standard core_renderer during maintenance
+ * tasks such as installation and upgrade.
+ * We override it in order to style those scenarios consistently with the regular
+ * bootstrap look and feel.
+ *
+ * @package    theme_bootstrapbase
+ * @copyright  2014 Sam Hemelryk
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class theme_bootstrapbase_core_renderer_maintenance extends core_renderer_maintenance {
 }

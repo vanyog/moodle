@@ -22,9 +22,10 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['h3'] = 'Heading (large)';
+$string['h4'] = 'Heading (medium)';
+$string['h5'] = 'Heading (small)';
+$string['p'] = 'Paragraph';
 $string['pluginname'] = 'Paragraph styles';
+$string['pre'] = 'Pre-formatted';
 $string['title'] = 'Paragraph styles';
-$string['h1'] = 'Title';
-$string['h2'] = 'Heading';
-$string['blockquote'] = 'Quoted';
-$string['p'] = 'Plain';

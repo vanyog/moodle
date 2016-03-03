@@ -29,14 +29,12 @@ global $CFG;
 require_once($CFG->libdir . '/adminlib.php');
 require_once($CFG->libdir . '/statslib.php');
 require_once($CFG->libdir . '/cronlib.php');
+require_once(__DIR__ . '/fixtures/stats_events.php');
 
 /**
  * Test functions that affect daily stats.
  */
 class core_statslib_testcase extends advanced_testcase {
-    /** The student role ID **/
-    const STID = 5;
-
     /** The day to use for testing **/
     const DAY = 1272672000;
 
@@ -49,54 +47,27 @@ class core_statslib_testcase extends advanced_testcase {
     /** @var array The replacements to be used when loading XML files **/
     protected $replacements = null;
 
-    /**
-     * Set up the database for tests.
-     *
-     * This function is needed so that daily_log_provider has the before-test set up from setUp()
-     */
-    protected function set_up_db() {
-        global $DB;
-
-        if ($DB->record_exists('user', array('username' => 'user1'))) {
-            return;
-        }
-
-        $datagen = self::getDataGenerator();
-
-        $user1   = $datagen->create_user(array('username'=>'user1'));
-        $user2   = $datagen->create_user(array('username'=>'user2'));
-
-        $course1 = $datagen->create_course(array('shortname'=>'course1'));
-
-        $success = enrol_try_internal_enrol($course1->id, $user1->id, 5);
-
-        if (!$success) {
-            trigger_error('User enrollment failed', E_USER_ERROR);
-        }
-
-        $context = context_system::instance();
-        role_assign(self::STID, $user2->id, $context->id);
-
-        $this->generate_replacement_list();
-    }
 
     /**
      * Setup function
      *   - Allow changes to CFG->debug for testing purposes.
      */
     protected function setUp() {
-        global $CFG;
+        global $CFG, $DB;
         parent::setUp();
 
         // Settings to force statistic to run during testing.
-        $CFG->timezone                = self::TIMEZONE;
+        $this->setTimezone(self::TIMEZONE);
+        core_date::set_default_server_timezone();
         $CFG->statsfirstrun           = 'all';
         $CFG->statslastdaily          = 0;
         $CFG->statslastexecution      = 0;
 
         // Figure out the broken day start so I can figure out when to the start time should be.
         $time   = time();
-        $offset = get_timezone_offset($CFG->timezone);
+        // This nonsense needs to be rewritten.
+        $date = new DateTime('now', core_date::get_server_timezone_object());
+        $offset = $date->getOffset();
         $stime  = $time + $offset;
         $stime  = intval($stime / (60*60*24)) * 60*60*24;
         $stime -= $offset;
@@ -106,14 +77,23 @@ class core_statslib_testcase extends advanced_testcase {
         $CFG->statsruntimestarthour   = $shour;
         $CFG->statsruntimestartminute = 0;
 
-        $this->set_up_db();
+        if ($DB->record_exists('user', array('username' => 'user1'))) {
+            return;
+        }
 
+        // Set up the database.
+        $datagen = self::getDataGenerator();
+
+        $user1   = $datagen->create_user(array('username'=>'user1'));
+        $user2   = $datagen->create_user(array('username'=>'user2'));
+
+        $course1 = $datagen->create_course(array('shortname'=>'course1'));
+        $datagen->enrol_user($user1->id, $course1->id);
+
+        $this->generate_replacement_list();
+
+        // Reset between tests.
         $this->resetAfterTest();
-    }
-
-    protected function tearDown() {
-        // Reset the timeouts.
-        set_time_limit(0);
     }
 
     /**
@@ -154,7 +134,7 @@ class core_statslib_testcase extends advanced_testcase {
             return;
         }
 
-        $CFG->timezone = self::TIMEZONE;
+        $this->setTimezone(self::TIMEZONE);
 
         $guest = $DB->get_record('user', array('id' => $CFG->siteguest));
         $user1 = $DB->get_record('user', array('username' => 'user1'));
@@ -171,11 +151,10 @@ class core_statslib_testcase extends advanced_testcase {
             trigger_error('Course setup incomplete', E_USER_ERROR);
         }
 
-        $offset = get_timezone_offset($CFG->timezone);
-
         $start      = stats_get_base_daily(self::DAY + 3600);
         $startnolog = stats_get_base_daily(stats_get_start_from('daily'));
         $gr         = get_guest_role();
+        $studentrole = $DB->get_record('role', array('shortname' => 'student'));
 
         $this->replacements = array(
             // Start and end times.
@@ -199,7 +178,7 @@ class core_statslib_testcase extends advanced_testcase {
             // Role ids.
             '[frontpage_roleid]' => (int) $CFG->defaultfrontpageroleid,
             '[guest_roleid]'     => $gr->id,
-            '[student_roleid]'   => self::STID,
+            '[student_roleid]'   => $studentrole->id,
         );
     }
 
@@ -230,21 +209,18 @@ class core_statslib_testcase extends advanced_testcase {
 
     /**
      * Provides the log data for test_statslib_cron_daily.
+     *
+     * @return array of fixture XML log file names.
      */
     public function daily_log_provider() {
-        global $CFG, $DB;
+        $logfiles = array();
+        $fileno = array('00', '01', '02', '03', '04', '05', '06', '07', '08');
 
-        $this->set_up_db();
-
-        $tests = array('00', '01', '02', '03', '04', '05', '06', '07', '08');
-
-        $dataset = array();
-
-        foreach ($tests as $test) {
-            $dataset[] = $this->load_xml_data_file(__DIR__."/fixtures/statslib-test{$test}.xml");
+        foreach ($fileno as $no) {
+            $logfiles[] = array("statslib-test{$no}.xml");
         }
 
-        return $dataset;
+        return $logfiles;
     }
 
     /**
@@ -324,16 +300,16 @@ class core_statslib_testcase extends advanced_testcase {
         global $CFG, $DB;
 
         $dataset = $this->load_xml_data_file(__DIR__."/fixtures/statslib-test01.xml");
-        $time = time();
         $DB->delete_records('log');
 
         // Don't ask.  I don't think get_timezone_offset works correctly.
-        $day = self::DAY - get_timezone_offset($CFG->timezone);
+        $date = new DateTime('now', core_date::get_server_timezone_object());
+        $day = self::DAY - $date->getOffset();
 
         $CFG->statsfirstrun = 'all';
         // Allow 1 second difference in case we cross a second boundary.
         // Note: within 3 days of a DST change - -3 days != 3 * 24 hours (it may be more or less).
-        $this->assertLessThanOrEqual(1, stats_get_start_from('daily') - strtotime('-3 days', $time), 'All start time');
+        $this->assertLessThanOrEqual(1, stats_get_start_from('daily') - strtotime('-3 days', time()), 'All start time');
 
         $this->prepare_db($dataset[0], array('log'));
         $records = $DB->get_records('log');
@@ -341,13 +317,53 @@ class core_statslib_testcase extends advanced_testcase {
         $this->assertEquals($day + 14410, stats_get_start_from('daily'), 'Log entry start');
 
         $CFG->statsfirstrun = 'none';
-        $this->assertLessThanOrEqual(1, stats_get_start_from('daily') - strtotime('-3 days', $time), 'None start time');
+        $this->assertLessThanOrEqual(1, stats_get_start_from('daily') - strtotime('-3 days', time()), 'None start time');
 
         $CFG->statsfirstrun = 14515200;
-        $this->assertLessThanOrEqual(1, stats_get_start_from('daily') - ($time - (14515200)), 'Specified start time');
+        $this->assertLessThanOrEqual(1, stats_get_start_from('daily') - (time() - (14515200)), 'Specified start time');
 
         $this->prepare_db($dataset[1], array('stats_daily'));
-        $this->assertEquals($day + (24 * 3600), stats_get_start_from('daily'), 'Daily stats start time');
+        $this->assertEquals($day + DAYSECS, stats_get_start_from('daily'), 'Daily stats start time');
+
+        // New log stores.
+        $this->preventResetByRollback();
+
+        $this->assertFileExists("$CFG->dirroot/$CFG->admin/tool/log/store/standard/version.php");
+        set_config('enabled_stores', 'logstore_standard', 'tool_log');
+        set_config('buffersize', 0, 'logstore_standard');
+        set_config('logguests', 1, 'logstore_standard');
+        get_log_manager(true);
+
+        $this->assertEquals(0, $DB->count_records('logstore_standard_log'));
+
+        $DB->delete_records('stats_daily');
+        $CFG->statsfirstrun = 'all';
+        $firstoldtime = $DB->get_field_sql('SELECT MIN(time) FROM {log}');
+
+        $this->assertEquals($firstoldtime, stats_get_start_from('daily'));
+
+        \core_tests\event\create_executed::create(array('context' => context_system::instance()))->trigger();
+        \core_tests\event\read_executed::create(array('context' => context_system::instance()))->trigger();
+        \core_tests\event\update_executed::create(array('context' => context_system::instance()))->trigger();
+        \core_tests\event\delete_executed::create(array('context' => context_system::instance()))->trigger();
+
+        // Fake the origin of events.
+        $DB->set_field('logstore_standard_log', 'origin', 'web', array());
+
+        $logs = $DB->get_records('logstore_standard_log');
+        $this->assertCount(4, $logs);
+
+        $firstnew = reset($logs);
+        $this->assertGreaterThan($firstoldtime, $firstnew->timecreated);
+        $DB->set_field('logstore_standard_log', 'timecreated', 10, array('id' => $firstnew->id));
+        $this->assertEquals(10, stats_get_start_from('daily'));
+
+        $DB->set_field('logstore_standard_log', 'timecreated', $firstnew->timecreated, array('id' => $firstnew->id));
+        $DB->delete_records('log');
+        $this->assertEquals($firstnew->timecreated, stats_get_start_from('daily'));
+
+        set_config('enabled_stores', '', 'tool_log');
+        get_log_manager(true);
     }
 
     /**
@@ -359,8 +375,8 @@ class core_statslib_testcase extends advanced_testcase {
     public function test_statslib_get_base_daily() {
         global $CFG;
 
-        for ($x = 0; $x < 24; $x += 1) {
-            $CFG->timezone = $x;
+        for ($x = 0; $x < 13; $x += 1) {
+            $this->setTimezone($x);
 
             $start = 1272672000 - ($x * 3600);
             if ($x >= 20) {
@@ -375,9 +391,7 @@ class core_statslib_testcase extends advanced_testcase {
      * Test the function that gets the start of the next day.
      */
     public function test_statslib_get_next_day_start() {
-        global $CFG;
-
-        $CFG->timezone = 0;
+        $this->setTimezone(0);
         $this->assertEquals(1272758400, stats_get_next_day_start(1272686410));
     }
 
@@ -496,13 +510,15 @@ class core_statslib_testcase extends advanced_testcase {
      * @depends test_statslib_temp_table_create_and_drop
      */
     public function test_statslib_temp_table_fill() {
-        global $CFG, $DB;
+        global $CFG, $DB, $USER;
 
         $dataset = $this->load_xml_data_file(__DIR__."/fixtures/statslib-test09.xml");
 
         $this->prepare_db($dataset[0], array('log'));
 
-        $start = self::DAY - get_timezone_offset($CFG->timezone);
+        // This nonsense needs to be rewritten.
+        $date = new DateTime('now', core_date::get_server_timezone_object());
+        $start = self::DAY - $date->getOffset();
         $end   = $start + (24 * 3600);
 
         stats_temp_table_create();
@@ -511,6 +527,83 @@ class core_statslib_testcase extends advanced_testcase {
         $this->assertEquals(1, $DB->count_records('temp_log1'));
         $this->assertEquals(1, $DB->count_records('temp_log2'));
 
+        stats_temp_table_drop();
+
+        // New log stores.
+        $this->preventResetByRollback();
+        stats_temp_table_create();
+
+        $course = $this->getDataGenerator()->create_course();
+        $context = context_course::instance($course->id);
+        $fcontext = context_course::instance(SITEID);
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        $this->assertFileExists("$CFG->dirroot/$CFG->admin/tool/log/store/standard/version.php");
+        set_config('enabled_stores', 'logstore_standard', 'tool_log');
+        set_config('buffersize', 0, 'logstore_standard');
+        set_config('logguests', 1, 'logstore_standard');
+        get_log_manager(true);
+
+        $DB->delete_records('logstore_standard_log');
+
+        \core_tests\event\create_executed::create(array('context' => $fcontext, 'courseid' => SITEID))->trigger();
+        \core_tests\event\read_executed::create(array('context' => $context, 'courseid' => $course->id))->trigger();
+        \core_tests\event\update_executed::create(array('context' => context_system::instance()))->trigger();
+        \core_tests\event\delete_executed::create(array('context' => context_system::instance()))->trigger();
+
+        \core\event\user_loggedin::create(
+            array(
+                'userid' => $USER->id,
+                'objectid' => $USER->id,
+                'other' => array('username' => $USER->username),
+            )
+        )->trigger();
+
+        $DB->set_field('logstore_standard_log', 'timecreated', 10);
+
+        $this->assertEquals(5, $DB->count_records('logstore_standard_log'));
+
+        \core_tests\event\delete_executed::create(array('context' => context_system::instance()))->trigger();
+        \core_tests\event\delete_executed::create(array('context' => context_system::instance()))->trigger();
+
+        // Fake the origin of events.
+        $DB->set_field('logstore_standard_log', 'origin', 'web', array());
+
+        $this->assertEquals(7, $DB->count_records('logstore_standard_log'));
+
+        stats_temp_table_fill(9, 11);
+
+        $logs1 = $DB->get_records('temp_log1');
+        $logs2 = $DB->get_records('temp_log2');
+        $this->assertCount(5, $logs1);
+        $this->assertCount(5, $logs2);
+        // The order of records in the temp tables is not guaranteed...
+
+        $viewcount = 0;
+        $updatecount = 0;
+        $logincount = 0;
+        foreach ($logs1 as $log) {
+            if ($log->course == $course->id) {
+                $this->assertEquals('view', $log->action);
+                $viewcount++;
+            } else {
+                $this->assertTrue(in_array($log->action, array('update', 'login')));
+                if ($log->action === 'update') {
+                    $updatecount++;
+                } else {
+                    $logincount++;
+                }
+                $this->assertEquals(SITEID, $log->course);
+            }
+            $this->assertEquals($user->id, $log->userid);
+        }
+        $this->assertEquals(1, $viewcount);
+        $this->assertEquals(3, $updatecount);
+        $this->assertEquals(1, $logincount);
+
+        set_config('enabled_stores', '', 'tool_log');
+        get_log_manager(true);
         stats_temp_table_drop();
     }
 
@@ -578,9 +671,12 @@ class core_statslib_testcase extends advanced_testcase {
      * @depends test_statslib_temp_table_fill
      * @dataProvider daily_log_provider
      */
-    public function test_statslib_cron_daily($logs, $stats) {
+    public function test_statslib_cron_daily($xmlfile) {
         global $CFG, $DB;
 
+        $dataset = $this->load_xml_data_file(__DIR__."/fixtures/{$xmlfile}");
+
+        list($logs, $stats) = $dataset;
         $this->prepare_db($logs, array('log'));
 
         // Stats cron daily uses mtrace, turn on buffering to silence output.

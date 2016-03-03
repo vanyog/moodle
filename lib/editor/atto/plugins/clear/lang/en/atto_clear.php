@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'Clear formatting';
-$string['clear'] = 'Clear formatting';

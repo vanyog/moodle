@@ -23,7 +23,7 @@
  * this.options.client_id, the instance id
  * this.options.contextid
  * this.options.itemid
- * this.options.repositories, stores all repositories displaied in file picker
+ * this.options.repositories, stores all repositories displayed in file picker
  * this.options.formcallback
  *
  * Active repository options
@@ -331,21 +331,15 @@ YUI.add('moodle-core_filepicker', function(Y) {
         /** initialize table view */
         var initialize_table_view = function() {
             var cols = [
-                {key: "displayname", label: M.str.moodle.name, allowHTML: true, formatter: formatTitle,
+                {key: "displayname", label: M.util.get_string('name', 'moodle'), allowHTML: true, formatter: formatTitle,
                     sortable: true, sortFn: sortFoldersFirst},
-                {key: "datemodified", label: M.str.moodle.lastmodified, allowHTML: true, formatter: formatValue,
+                {key: "datemodified", label: M.util.get_string('lastmodified', 'moodle'), allowHTML: true, formatter: formatValue,
                     sortable: true, sortFn: sortFoldersFirst},
-                {key: "size", label: M.str.repository.size, allowHTML: true, formatter: formatValue,
+                {key: "size", label: M.util.get_string('size', 'repository'), allowHTML: true, formatter: formatValue,
                     sortable: true, sortFn: sortFoldersFirst},
-                {key: "mimetype", label: M.str.repository.type, allowHTML: true,
+                {key: "mimetype", label: M.util.get_string('type', 'repository'), allowHTML: true,
                     sortable: true, sortFn: sortFoldersFirst}
             ];
-            for (var k in fileslist) {
-                // to speed up sorting and formatting
-                fileslist[k].displayname = file_get_displayname(fileslist[k]);
-                fileslist[k].isfolder = file_is_folder(fileslist[k]);
-                fileslist[k].classname = options.classnamecallback(fileslist[k]);
-            }
             scope.tableview = new Y.DataTable({columns: cols, data: fileslist});
             scope.tableview.delegate('click', function (e, tableview) {
                 var record = tableview.getRecord(e.currentTarget.get('id'));
@@ -366,8 +360,12 @@ YUI.add('moodle-core_filepicker', function(Y) {
         }
         /** append items in table view mode */
         var append_files_table = function() {
-            var parentnode = scope.one('.'+classname);
-            scope.tableview.render(parentnode);
+            if (options.appendonly) {
+                fileslist.forEach(function(el) {
+                    this.tableview.data.add(el);
+                },scope);
+            }
+            scope.tableview.render(scope.one('.'+classname));
             scope.tableview.sortable = options.sortable ? true : false;
         };
         /** append items in tree view mode */
@@ -426,6 +424,16 @@ YUI.add('moodle-core_filepicker', function(Y) {
                     element.on('contextmenu', options.rightclickcallback, options.callbackcontext, node);
                 }
             }
+        }
+
+        // If table view, need some additional properties
+        // before passing fileslist to the YUI tableview
+        if (options.viewmode == 3) {
+            fileslist.forEach(function(el) {
+                el.displayname = file_get_displayname(el);
+                el.isfolder = file_is_folder(el);
+                el.classname = options.classnamecallback(el);
+            }, scope);
         }
 
         // initialize files view
@@ -488,7 +496,7 @@ M.core_filepicker.loadedpreviews = M.core_filepicker.loadedpreviews || {};
 /**
 * Set selected file info
 *
-* @parma object file info
+* @param object file info
 */
 M.core_filepicker.select_file = function(file) {
     M.core_filepicker.active_filepicker.select_file(file);
@@ -582,27 +590,23 @@ M.core_filepicker.init = function(Y, options) {
                 method: 'POST',
                 on: {
                     complete: function(id,o,p) {
-                        if (!o) {
-                            // TODO
-                            alert('IO FATAL');
-                            return;
-                        }
                         var data = null;
                         try {
                             data = Y.JSON.parse(o.responseText);
                         } catch(e) {
-                            scope.print_msg(M.str.repository.invalidjson, 'error');
-                            scope.display_error(M.str.repository.invalidjson+'<pre>'+stripHTML(o.responseText)+'</pre>', 'invalidjson')
-                            return;
+                            if (o && o.status && o.status > 0) {
+                                Y.use('moodle-core-notification-exception', function() {
+                                    return new M.core.exception(e);
+                                });
+                                return;
+                            }
                         }
                         // error checking
                         if (data && data.error) {
-                            scope.print_msg(data.error, 'error');
-                            if (args.onerror) {
-                                args.onerror(id,data,p);
-                            } else {
-                                this.fpnode.one('.fp-content').setContent('');
-                            }
+                            Y.use('moodle-core-notification-ajaxexception', function () {
+                                return new M.core.ajaxException(data);
+                            });
+                            this.fpnode.one('.fp-content').setContent('');
                             return;
                         } else {
                             if (data.msg) {
@@ -718,7 +722,7 @@ M.core_filepicker.init = function(Y, options) {
                 this.process_dlg = new M.core.dialogue({
                     draggable    : true,
                     bodyContent  : node,
-                    headerContent: M.str.repository.fileexistsdialogheader,
+                    headerContent: M.util.get_string('fileexistsdialogheader', 'repository'),
                     centered     : true,
                     modal        : true,
                     visible      : false,
@@ -728,9 +732,9 @@ M.core_filepicker.init = function(Y, options) {
                 node.one('.fp-dlg-butrename').on('click', handleRename, this);
                 node.one('.fp-dlg-butcancel').on('click', handleCancel, this);
                 if (this.options.env == 'editor') {
-                    node.one('.fp-dlg-text').setContent(M.str.repository.fileexistsdialog_editor);
+                    node.one('.fp-dlg-text').setContent(M.util.get_string('fileexistsdialog_editor', 'repository'));
                 } else {
-                    node.one('.fp-dlg-text').setContent(M.str.repository.fileexistsdialog_filemanager);
+                    node.one('.fp-dlg-text').setContent(M.util.get_string('fileexistsdialog_filemanager', 'repository'));
                 }
             }
             this.selectnode.removeClass('loading');
@@ -747,10 +751,10 @@ M.core_filepicker.init = function(Y, options) {
         },
         /** displays message in a popup */
         print_msg: function(msg, type) {
-            var header = M.str.moodle.error;
+            var header = M.util.get_string('error', 'moodle');
             if (type != 'error') {
                 type = 'info'; // one of only two types excepted
-                header = M.str.moodle.info;
+                header = M.util.get_string('info', 'moodle');
             }
             if (!this.msg_dlg) {
                 this.msg_dlg_node = Y.Node.createWithFilesSkin(M.core_filepicker.templates.message);
@@ -781,7 +785,7 @@ M.core_filepicker.init = function(Y, options) {
             /*if ((appenditems == null) && (!this.filelist || !this.filelist.length) && !this.active_repo.hasmorepages) {
              // TODO do it via classes and adjust for each view mode!
                 // If there are no items and no next page, just display status message and quit
-                this.display_error(M.str.repository.nofilesavailable, 'nofilesavailable');
+                this.display_error(M.util.get_string('nofilesavailable', 'repository'), 'nofilesavailable');
                 return;
             }*/
             if (this.viewmode == 2) {
@@ -792,12 +796,6 @@ M.core_filepicker.init = function(Y, options) {
                 this.view_as_icons(appenditems);
             }
             this.fpnode.one('.fp-content').setAttribute('tabindex', '0');
-            // Temporary fix for IE8 until MDL-41229 is integrated.
-            // The role dialog is needed for screen reader to read
-            // the filepicker's content (MDL-41232).
-            this.fpnode.one('.fp-content').setAttribute('role', 'dialog');
-            this.fpnode.one('.fp-content').setAttribute('aria-live', 'assertive');
-            // End of temporary fix.
             this.fpnode.one('.fp-content').focus();
             // display/hide the link for requesting next page
             if (!appenditems && this.active_repo.hasmorepages) {
@@ -922,7 +920,7 @@ M.core_filepicker.init = function(Y, options) {
             var list = (appenditems != null) ? appenditems : this.filelist;
             this.viewmode = 2;
             if (!this.filelist || this.filelist.length==0 && (!this.filepath || !this.filepath.length)) {
-                this.display_error(M.str.repository.nofilesavailable, 'nofilesavailable');
+                this.display_error(M.util.get_string('nofilesavailable', 'repository'), 'nofilesavailable');
                 return;
             }
 
@@ -966,7 +964,7 @@ M.core_filepicker.init = function(Y, options) {
             var list = (appenditems != null) ? appenditems : this.filelist;
             var element_template = Y.Node.create(M.core_filepicker.templates.iconfilename);
             if ((appenditems == null) && (!this.filelist || !this.filelist.length)) {
-                this.display_error(M.str.repository.nofilesavailable, 'nofilesavailable');
+                this.display_error(M.util.get_string('nofilesavailable', 'repository'), 'nofilesavailable');
                 return;
             }
             var options = {
@@ -1000,7 +998,7 @@ M.core_filepicker.init = function(Y, options) {
             this.viewmode = 3;
             var list = (appenditems != null) ? appenditems : this.filelist;
             if (!appenditems && (!this.filelist || this.filelist.length==0) && !this.active_repo.hasmorepages) {
-                this.display_error(M.str.repository.nofilesavailable, 'nofilesavailable');
+                this.display_error(M.util.get_string('nofilesavailable', 'repository'), 'nofilesavailable');
                 return;
             }
             var element_template = Y.Node.create(M.core_filepicker.templates.listfilename);
@@ -1076,7 +1074,7 @@ M.core_filepicker.init = function(Y, options) {
             if (argstitle.length > titlelength) {
                 argstitle = argstitle.substring(0, titlelength) + '...';
             }
-            Y.one('#fp-file_label_'+this.options.client_id).setContent(Y.Escape.html(M.str.repository.select+' '+argstitle));
+            Y.one('#fp-file_label_'+this.options.client_id).setContent(Y.Escape.html(M.util.get_string('select', 'repository')+' '+argstitle));
             this.selectui.show();
             Y.one('#'+this.selectnode.get('id')).focus();
             var client_id = this.options.client_id;
@@ -1111,8 +1109,7 @@ M.core_filepicker.init = function(Y, options) {
             for (var linktype in filelink) {
                 var el = selectnode.one('.fp-linktype-'+linktype);
                 el.addClassIf('uneditable', !(filelink[linktype] && filelinkcount>1));
-                el.one('input').set('disabled', (filelink[linktype] && filelinkcount>1) ? '' : 'disabled').
-                    set('checked', (firstfilelink == linktype) ? 'checked' : '').simulate('change')
+                el.one('input').set('checked', (firstfilelink == linktype) ? 'checked' : '').simulate('change');
             }
 
             // TODO MDL-32532: attributes 'hasauthor' and 'haslicense' need to be obsolete,
@@ -1269,12 +1266,16 @@ M.core_filepicker.init = function(Y, options) {
             var viewbar = this.fpnode.one('.fp-viewbar')
             if (viewbar) {
                 if (mode) {
-                    viewbar.addClass('enabled').removeClass('disabled')
+                    viewbar.addClass('enabled').removeClass('disabled');
+                    this.fpnode.all('.fp-vb-icons,.fp-vb-tree,.fp-vb-details').setAttribute("aria-disabled", "false");
+                    this.fpnode.all('.fp-vb-icons,.fp-vb-tree,.fp-vb-details').setAttribute("tabindex", "");
                 } else {
-                    viewbar.removeClass('enabled').addClass('disabled')
+                    viewbar.removeClass('enabled').addClass('disabled');
+                    this.fpnode.all('.fp-vb-icons,.fp-vb-tree,.fp-vb-details').setAttribute("aria-disabled", "true");
+                    this.fpnode.all('.fp-vb-icons,.fp-vb-tree,.fp-vb-details').setAttribute("tabindex", "-1");
                 }
             }
-            this.fpnode.all('.fp-vb-icons,.fp-vb-tree,.fp-vb-details').removeClass('checked')
+            this.fpnode.all('.fp-vb-icons,.fp-vb-tree,.fp-vb-details').removeClass('checked');
             var modes = {1:'icons', 2:'tree', 3:'details'};
             this.fpnode.all('.fp-vb-'+modes[this.viewmode]).addClass('checked');
         },
@@ -1298,18 +1299,26 @@ M.core_filepicker.init = function(Y, options) {
             var client_id = this.options.client_id;
             var fpid = "filepicker-"+ client_id;
             var labelid = 'fp-dialog-label_'+ client_id;
+            var width = 873;
+            var draggable = true;
             this.fpnode = Y.Node.createWithFilesSkin(M.core_filepicker.templates.generallayout).
                 set('id', 'filepicker-'+client_id).set('aria-labelledby', labelid);
+
+            if (this.in_iframe()) {
+                width = Math.floor(window.innerWidth * 0.95);
+                draggable = false;
+            }
+
             this.mainui = new M.core.dialogue({
                 extraClasses : ['filepicker'],
-                draggable    : true,
+                draggable    : draggable,
                 bodyContent  : this.fpnode,
-                headerContent: '<span id="'+ labelid +'">'+ M.str.repository.filepicker +'</span>',
+                headerContent: '<h3 id="'+ labelid +'">'+ M.util.get_string('filepicker', 'repository') +'</h3>',
                 centered     : true,
                 modal        : true,
                 visible      : false,
-                width        : '873px',
-                responsiveWidth : 873,
+                width        : width+'px',
+                responsiveWidth : 768,
                 height       : '558px',
                 zIndex       : this.options.zIndex
             });
@@ -1322,7 +1331,7 @@ M.core_filepicker.init = function(Y, options) {
 
             var fplabel = 'fp-file_label_'+ client_id;
             this.selectui = new M.core.dialogue({
-                headerContent: '<span id="' + fplabel +'">'+M.str.repository.select+'</span>',
+                headerContent: '<h3 id="' + fplabel +'">'+M.util.get_string('select', 'repository')+'</h3>',
                 draggable    : true,
                 width        : '450px',
                 bodyContent  : this.selectnode,
@@ -1392,7 +1401,7 @@ M.core_filepicker.init = function(Y, options) {
             }
             // display error if no repositories found
             if (sorted_repositories.length==0) {
-                this.display_error(M.str.repository.norepositoriesavailable, 'norepositoriesavailable')
+                this.display_error(M.util.get_string('norepositoriesavailable', 'repository'), 'norepositoriesavailable')
             }
             // display repository that was used last time
             this.mainui.show();
@@ -1697,7 +1706,7 @@ M.core_filepicker.init = function(Y, options) {
 
                 this.set_preference('recentlicense', license.get('value'));
                 if (!content.one('.fp-file input').get('value')) {
-                    scope.print_msg(M.str.repository.nofilesattached, 'error');
+                    scope.print_msg(M.util.get_string('nofilesattached', 'repository'), 'error');
                     return false;
                 }
                 this.hide_header();
@@ -1855,10 +1864,6 @@ M.core_filepicker.init = function(Y, options) {
 
             // login button
             enable_tb_control(toolbar.one('.fp-tb-logout'), !r.nologin);
-            if (!r.nologin) {
-                var label = r.logouttext ? r.logouttext : M.str.repository.logout;
-                toolbar.one('.fp-tb-logout').one('a,button').setContent(label)
-            }
 
             // manage url
             enable_tb_control(toolbar.one('.fp-tb-manage'), r.manage);
@@ -1950,6 +1955,10 @@ M.core_filepicker.init = function(Y, options) {
                 M.util.set_user_preference('filepicker_' + name, value);
                 this.options.userprefs[name] = value;
             }
+        },
+        in_iframe: function () {
+            // If we're not the top window then we're in an iFrame
+            return window.self !== window.top;
         }
     });
     var loading = Y.one('#filepicker-loading-'+options.client_id);

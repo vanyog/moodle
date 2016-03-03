@@ -18,8 +18,7 @@
 /**
  * Workshop module renderering methods are defined here
  *
- * @package    mod
- * @subpackage workshop
+ * @package    mod_workshop
  * @copyright  2009 David Mudrak <david.mudrak@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -102,13 +101,9 @@ class mod_workshop_renderer extends plugin_renderer_base {
         $o .= $this->output->heading($title, 3, 'title');
 
         if (!$anonymous) {
-            $author             = new stdclass();
-            $author->id         = $submission->authorid;
-            $author->firstname  = $submission->authorfirstname;
-            $author->lastname   = $submission->authorlastname;
-            $author->picture    = $submission->authorpicture;
-            $author->imagealt   = $submission->authorimagealt;
-            $author->email      = $submission->authoremail;
+            $author = new stdclass();
+            $additionalfields = explode(',', user_picture::fields());
+            $author = username_load_fields_from_object($author, $submission, 'author', $additionalfields);
             $userpic            = $this->output->user_picture($author, array('courseid' => $this->page->course->id, 'size' => 64));
             $userurl            = new moodle_url('/user/view.php',
                                             array('id' => $author->id, 'course' => $this->page->course->id));
@@ -185,12 +180,8 @@ class mod_workshop_renderer extends plugin_renderer_base {
 
         if (!$anonymous) {
             $author             = new stdClass();
-            $author->id         = $summary->authorid;
-            $author->firstname  = $summary->authorfirstname;
-            $author->lastname   = $summary->authorlastname;
-            $author->picture    = $summary->authorpicture;
-            $author->imagealt   = $summary->authorimagealt;
-            $author->email      = $summary->authoremail;
+            $additionalfields = explode(',', user_picture::fields());
+            $author = username_load_fields_from_object($author, $summary, 'author', $additionalfields);
             $userpic            = $this->output->user_picture($author, array('courseid' => $this->page->course->id, 'size' => 35));
             $userurl            = new moodle_url('/user/view.php',
                                             array('id' => $author->id, 'course' => $this->page->course->id));
@@ -229,7 +220,7 @@ class mod_workshop_renderer extends plugin_renderer_base {
         $classes = 'submission-full example';
         $o .= $this->output->container_start($classes);
         $o .= $this->output->container_start('header');
-        $o .= $this->output->heading(format_string($example->title), 3, 'title');
+        $o .= $this->output->container(format_string($example->title), array('class' => 'title'));
         $o .= $this->output->container_end(); // end of header
 
         $content = file_rewrite_pluginfile_urls($example->content, 'pluginfile.php', $this->page->context->id,
@@ -429,21 +420,29 @@ class mod_workshop_renderer extends plugin_renderer_base {
             $sortbyname = $sortbyfirstname . ' / ' . $sortbylastname;
         }
 
+        $sortbysubmisstiontitle = $this->helper_sortable_heading(get_string('submission', 'workshop'), 'submissiontitle',
+                $options->sortby, $options->sorthow);
+        $sortbysubmisstionlastmodified = $this->helper_sortable_heading(get_string('submissionlastmodified', 'workshop'),
+                'submissionmodified', $options->sortby, $options->sorthow);
+        $sortbysubmisstion = $sortbysubmisstiontitle . ' / ' . $sortbysubmisstionlastmodified;
+
         $table->head = array();
         $table->head[] = $sortbyname;
-        $table->head[] = $this->helper_sortable_heading(get_string('submission', 'workshop'), 'submissiontitle',
-                $options->sortby, $options->sorthow);
-        $table->head[] = $this->helper_sortable_heading(get_string('receivedgrades', 'workshop'));
-        if ($options->showsubmissiongrade) {
-            $table->head[] = $this->helper_sortable_heading(get_string('submissiongradeof', 'workshop', $data->maxgrade),
-                    'submissiongrade', $options->sortby, $options->sorthow);
-        }
-        $table->head[] = $this->helper_sortable_heading(get_string('givengrades', 'workshop'));
-        if ($options->showgradinggrade) {
-            $table->head[] = $this->helper_sortable_heading(get_string('gradinggradeof', 'workshop', $data->maxgradinggrade),
-                    'gradinggrade', $options->sortby, $options->sorthow);
-        }
+        $table->head[] = $sortbysubmisstion;
 
+        // If we are in submission phase ignore the following headers (columns).
+        if ($options->workshopphase != workshop::PHASE_SUBMISSION) {
+            $table->head[] = $this->helper_sortable_heading(get_string('receivedgrades', 'workshop'));
+            if ($options->showsubmissiongrade) {
+                $table->head[] = $this->helper_sortable_heading(get_string('submissiongradeof', 'workshop', $data->maxgrade),
+                        'submissiongrade', $options->sortby, $options->sorthow);
+            }
+            $table->head[] = $this->helper_sortable_heading(get_string('givengrades', 'workshop'));
+            if ($options->showgradinggrade) {
+                $table->head[] = $this->helper_sortable_heading(get_string('gradinggradeof', 'workshop', $data->maxgradinggrade),
+                        'gradinggrade', $options->sortby, $options->sorthow);
+            }
+        }
         $table->rowclasses  = array();
         $table->colclasses  = array();
         $table->data        = array();
@@ -493,6 +492,13 @@ class mod_workshop_renderer extends plugin_renderer_base {
                     $cell->attributes['class'] = 'submission';
                     $row->cells[] = $cell;
                 }
+
+                // If we are in submission phase ignore the following columns.
+                if ($options->workshopphase == workshop::PHASE_SUBMISSION) {
+                    $table->data[] = $row;
+                    continue;
+                }
+
                 // column #3 - received grades
                 if ($tr % $spanreceived == 0) {
                     $idx = intval($tr / $spanreceived);
@@ -1006,6 +1012,9 @@ class mod_workshop_renderer extends plugin_renderer_base {
             $url = new moodle_url('/mod/workshop/submission.php',
                                   array('cmid' => $this->page->context->instanceid, 'id' => $participant->submissionid));
             $out = html_writer::link($url, format_string($participant->submissiontitle), array('class'=>'title'));
+
+            $lastmodified = get_string('userdatemodified', 'workshop', userdate($participant->submissionmodified));
+            $out .= html_writer::tag('div', $lastmodified, array('class' => 'lastmodified'));
         }
 
         return $out;

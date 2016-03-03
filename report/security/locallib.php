@@ -39,7 +39,6 @@ function report_security_hide_timearning() {
 
 function report_security_get_issue_list() {
     return array(
-        'report_security_check_globals',
         'report_security_check_unsecuredataroot',
         'report_security_check_displayerrors',
         'report_security_check_noauth',
@@ -57,6 +56,7 @@ function report_security_get_issue_list() {
         'report_security_check_defaultuserrole',
         'report_security_check_guestrole',
         'report_security_check_frontpagerole',
+        'report_security_check_webcron',
 
     );
 }
@@ -75,35 +75,6 @@ function report_security_doc_link($issue, $name) {
 ///               Issue checks
 ///=============================================
 
-
-/**
- * Verifies register globals PHP setting.
- * @param bool $detailed
- * @return object result
- */
-function report_security_check_globals($detailed=false) {
-    $result = new stdClass();
-    $result->issue   = 'report_security_check_globals';
-    $result->name    = get_string('check_globals_name', 'report_security');
-    $result->info    = null;
-    $result->details = null;
-    $result->status  = null;
-    $result->link    = null;
-
-    if (ini_get_bool('register_globals')) {
-        $result->status = REPORT_SECURITY_CRITICAL;
-        $result->info   = get_string('check_globals_error', 'report_security');
-    } else {
-        $result->status = REPORT_SECURITY_OK;
-        $result->info   = get_string('check_globals_ok', 'report_security');
-    }
-
-    if ($detailed) {
-        $result->details = get_string('check_globals_details', 'report_security');
-    }
-
-    return $result;
-}
 
 /**
  * Verifies unsupported noauth setting
@@ -411,7 +382,7 @@ function report_security_check_emailchangeconfirmation($detailed=false) {
 function report_security_check_cookiesecure($detailed=false) {
     global $CFG;
 
-    if (strpos($CFG->wwwroot, 'https://') !== 0) {
+    if (!is_https()) {
         return null;
     }
 
@@ -508,7 +479,8 @@ function report_security_check_riskxss($detailed=false) {
     $result->info = get_string('check_riskxss_warning', 'report_security', $count);
 
     if ($detailed) {
-        $users = $DB->get_records_sql("SELECT DISTINCT u.id, u.firstname, u.lastname, u.picture, u.imagealt $sqlfrom", $params);
+        $userfields = user_picture::fields('u');
+        $users = $DB->get_records_sql("SELECT DISTINCT $userfields $sqlfrom", $params);
         foreach ($users as $uid=>$user) {
             $users[$uid] = fullname($user);
         }
@@ -563,7 +535,7 @@ function report_security_check_defaultuserrole($detailed=false) {
 
     if ($riskycount or !$legacyok) {
         $result->status  = REPORT_SECURITY_CRITICAL;
-        $result->info    = get_string('check_defaultuserrole_error', 'report_security', format_string($default_role->name));
+        $result->info    = get_string('check_defaultuserrole_error', 'report_security', role_get_name($default_role));
 
     } else {
         $result->status  = REPORT_SECURITY_OK;
@@ -710,7 +682,8 @@ function report_security_check_riskadmin($detailed=false) {
     $result->status  = null;
     $result->link    = null;
 
-    $sql = "SELECT u.id, u.firstname, u.lastname, u.picture, u.imagealt, u.email
+    $userfields = user_picture::fields('u');
+    $sql = "SELECT $userfields
               FROM {user} u
              WHERE u.id IN ($CFG->siteadmins)";
 
@@ -794,7 +767,12 @@ function report_security_check_riskbackup($detailed=false) {
     $systemrolecount = empty($systemroles) ? 0 : count($systemroles);
     $overriddenrolecount = empty($overriddenroles) ? 0 : count($overriddenroles);
 
-    $result->status  = REPORT_SECURITY_WARNING; // there is always at least one admin
+    if (max($usercount, $systemrolecount, $overriddenrolecount) > 0) {
+        $result->status = REPORT_SECURITY_WARNING;
+    } else {
+        $result->status = REPORT_SECURITY_OK;
+    }
+
     $a = (object)array('rolecount'=>$systemrolecount,'overridecount'=>$overriddenrolecount,'usercount'=>$usercount);
     $result->info = get_string('check_riskbackup_warning', 'report_security', $a);
 
@@ -834,7 +812,8 @@ function report_security_check_riskbackup($detailed=false) {
         $users = array();
 
         list($sort, $sortparams) = users_order_by_sql('u');
-        $rs = $DB->get_recordset_sql("SELECT DISTINCT u.id, u.firstname, u.lastname, u.picture, u.imagealt, u.email, ra.contextid, ra.roleid
+        $userfields = user_picture::fields('u');
+        $rs = $DB->get_recordset_sql("SELECT DISTINCT $userfields, ra.contextid, ra.roleid
             $sqluserinfo ORDER BY $sort", array_merge($params, $sortparams));
 
         foreach ($rs as $user) {
@@ -848,6 +827,40 @@ function report_security_check_riskbackup($detailed=false) {
             $users = '<ul>'.implode('', $users).'</ul>';
             $result->details .= get_string('check_riskbackup_details_users', 'report_security', $users);
         }
+    }
+
+    return $result;
+}
+
+/**
+ * Verifies the status of web cron
+ *
+ * @param bool $detailed
+ * @return object result
+ */
+function report_security_check_webcron($detailed = false) {
+    global $CFG;
+
+    $croncli = $CFG->cronclionly;
+    $cronremotepassword = $CFG->cronremotepassword;
+
+    $result = new stdClass();
+    $result->issue   = 'report_security_check_webcron';
+    $result->name    = get_string('check_webcron_name', 'report_security');
+    $result->details = null;
+    $result->link    = "<a href=\"$CFG->wwwroot/$CFG->admin/settings.php?section=sitepolicies\">"
+            .get_string('sitepolicies', 'admin').'</a>';
+
+    if (empty($croncli) && empty($cronremotepassword)) {
+        $result->status = REPORT_SECURITY_WARNING;
+        $result->info   = get_string('check_webcron_warning', 'report_security');
+    } else {
+        $result->status = REPORT_SECURITY_OK;
+        $result->info   = get_string('check_webcron_ok', 'report_security');
+    }
+
+    if ($detailed) {
+        $result->details = get_string('check_webcron_details', 'report_security');
     }
 
     return $result;

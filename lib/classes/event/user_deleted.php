@@ -26,9 +26,20 @@ namespace core\event;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Event when user profile is deleted.
+ * User deleted event class.
+ *
+ * @property-read array $other {
+ *      Extra information about event.
+ *
+ *      - string username: name of user.
+ *      - string email: user email.
+ *      - string idnumber: user idnumber.
+ *      - string picture: user picture.
+ *      - int mnethostid: mnet host id.
+ * }
  *
  * @package    core
+ * @since      Moodle 2.6
  * @copyright  2013 Rajesh Taneja <rajesh@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -40,7 +51,7 @@ class user_deleted extends base {
     protected function init() {
         $this->data['objecttable'] = 'user';
         $this->data['crud'] = 'd';
-        $this->data['level'] = self::LEVEL_OTHER;
+        $this->data['edulevel'] = self::LEVEL_OTHER;
     }
 
     /**
@@ -58,8 +69,7 @@ class user_deleted extends base {
      * @return string
      */
     public function get_description() {
-        $user = (object)$this->other['user'];
-        return 'User profile deleted for user '.$user->firstname.' '.$user->lastname.' id ('.$user->id.')';
+        return "The user with id '$this->userid' deleted the user with id '$this->objectid'.";
     }
 
     /**
@@ -77,7 +87,14 @@ class user_deleted extends base {
      * @return \stdClass user data.
      */
     protected function get_legacy_eventdata() {
-        return (object)$this->other['user'];
+        $user = $this->get_record_snapshot('user', $this->objectid);
+        $user->deleted = 0;
+        $user->username = $this->other['username'];
+        $user->email = $this->other['email'];
+        $user->idnumber = $this->other['idnumber'];
+        $user->picture = $this->other['picture'];
+
+        return $user;
     }
 
     /**
@@ -86,8 +103,8 @@ class user_deleted extends base {
      * @return array
      */
     protected function get_legacy_logdata() {
-        $user = (object)$this->other['user'];
-        return array(SITEID, 'user', 'delete', "view.php?id=$user->id", $user->firstname.' '.$user->lastname);
+        $user = $this->get_record_snapshot('user', $this->objectid);
+        return array(SITEID, 'user', 'delete', 'view.php?id=' . $user->id, $user->firstname . ' ' . $user->lastname);
     }
 
     /**
@@ -98,8 +115,41 @@ class user_deleted extends base {
      */
     protected function validate_data() {
         parent::validate_data();
-        if (!isset($this->other['user'])) {
-            throw new \coding_exception('user must be set in $other.');
+
+        if (!isset($this->relateduserid)) {
+            debugging('The \'relateduserid\' value must be specified in the event.', DEBUG_DEVELOPER);
+            $this->relateduserid = $this->objectid;
         }
+
+        if (!isset($this->other['username'])) {
+            throw new \coding_exception('The \'username\' value must be set in other.');
+        }
+
+        if (!isset($this->other['email'])) {
+            throw new \coding_exception('The \'email\' value must be set in other.');
+        }
+
+        if (!isset($this->other['idnumber'])) {
+            throw new \coding_exception('The \'idnumber\' value must be set in other.');
+        }
+
+        if (!isset($this->other['picture'])) {
+            throw new \coding_exception('The \'picture\' value must be set in other.');
+        }
+
+        if (!isset($this->other['mnethostid'])) {
+            throw new \coding_exception('The \'mnethostid\' value must be set in other.');
+        }
+    }
+
+    public static function get_objectid_mapping() {
+        return array('db' => 'user', 'restore' => 'user');
+    }
+
+    public static function get_other_mapping() {
+        $othermapped = array();
+        $othermapped['mnethostid'] = array('db' => 'mnet_host', 'restore' => base::NOT_MAPPED);
+
+        return $othermapped;
     }
 }

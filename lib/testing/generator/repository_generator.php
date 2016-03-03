@@ -32,7 +32,7 @@ defined('MOODLE_INTERNAL') || die();
  * @category   test
  * @copyright  2013 Frédéric Massart
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since      2.5.1
+ * @since      Moodle 2.5.1
  */
 class testing_repository_generator extends component_generator_base {
 
@@ -177,7 +177,7 @@ class testing_repository_generator extends component_generator_base {
         $record = $this->prepare_type_record($record);
         foreach ($typeoptions as $option) {
             if (!isset($record[$option])) {
-                throw new coding_exception("$option must be present in testing::create_repository_type() $record");
+                throw new coding_exception("$option must be present in testing::create_repository_type() for $type");
             }
         }
 

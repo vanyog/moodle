@@ -68,24 +68,16 @@ class restore_qtype_multichoice_plugin extends restore_qtype_plugin {
         $questioncreated = (bool) $this->get_mappingid('question_created', $oldquestionid);
 
         // If the question has been created by restore, we need to create its
-        // question_multichoice too.
+        // qtype_multichoice_options too.
         if ($questioncreated) {
-            // Adjust some columns.
-            $data->question = $newquestionid;
-            // Map sequence of question_answer ids.
-            if ($data->answers) {
-                $answersarr = explode(',', $data->answers);
-            } else {
-                $answersarr = array();
+            $data->questionid = $newquestionid;
+
+            // It is possible for old backup files to contain unique key violations.
+            // We need to check to avoid that.
+            if (!$DB->record_exists('qtype_multichoice_options', array('questionid' => $data->questionid))) {
+                $newitemid = $DB->insert_record('qtype_multichoice_options', $data);
+                $this->set_mapping('qtype_multichoice_options', $oldid, $newitemid);
             }
-            foreach ($answersarr as $key => $answer) {
-                $answersarr[$key] = $this->get_mappingid('question_answer', $answer);
-            }
-            $data->answers = implode(',', $answersarr);
-            // Insert record.
-            $newitemid = $DB->insert_record('question_multichoice', $data);
-            // Create mapping (needed for decoding links).
-            $this->set_mapping('question_multichoice', $oldid, $newitemid);
         }
     }
 
@@ -163,8 +155,8 @@ class restore_qtype_multichoice_plugin extends restore_qtype_plugin {
         $contents = array();
 
         $fields = array('correctfeedback', 'partiallycorrectfeedback', 'incorrectfeedback');
-        $contents[] = new restore_decode_content('question_multichoice',
-                $fields, 'question_multichoice');
+        $contents[] = new restore_decode_content('qtype_multichoice_options',
+                $fields, 'qtype_multichoice_options');
 
         return $contents;
     }

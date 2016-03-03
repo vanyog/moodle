@@ -18,10 +18,9 @@
 /**
  * Folder module renderer
  *
- * @package    mod
- * @subpackage folder
- * @copyright  2009 Petr Skoda  {@link http://skodak.org}
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   mod_folder
+ * @copyright 2009 Petr Skoda  {@link http://skodak.org}
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 defined('MOODLE_INTERNAL') || die();
 
@@ -40,11 +39,10 @@ class mod_folder_renderer extends plugin_renderer_base {
         $folderinstances = get_fast_modinfo($folder->course)->get_instances_of('folder');
         if (!isset($folderinstances[$folder->id]) ||
                 !($cm = $folderinstances[$folder->id]) ||
-                !$cm->uservisible ||
-                !($context = context_module::instance($cm->id)) ||
-                !has_capability('mod/folder:view', $context)) {
-            // some error in parameters or module is not visible to the user
-            // don't throw any errors in renderer, just return empty string
+                !($context = context_module::instance($cm->id))) {
+            // Some error in parameters.
+            // Don't throw any errors in renderer, just return empty string.
+            // Capability to view module must be checked before calling renderer.
             return $output;
         }
 
@@ -67,11 +65,26 @@ class mod_folder_renderer extends plugin_renderer_base {
                 'generalbox foldertree');
 
         // Do not append the edit button on the course page.
-        if ($folder->display != FOLDER_DISPLAY_INLINE && has_capability('mod/folder:managefiles', $context)) {
+        if ($folder->display != FOLDER_DISPLAY_INLINE) {
+            $containercontents = '';
+            $downloadable = folder_archive_available($folder, $cm);
+
+            if ($downloadable) {
+                $containercontents .= $this->output->single_button(
+                    new moodle_url('/mod/folder/download_folder.php', array('id' => $cm->id)),
+                    get_string('downloadfolder', 'folder')
+                );
+            }
+
+            if (has_capability('mod/folder:managefiles', $context)) {
+                $containercontents .= $this->output->single_button(
+                    new moodle_url('/mod/folder/edit.php', array('id' => $cm->id)),
+                    get_string('edit')
+                );
+            }
             $output .= $this->output->container(
-                    $this->output->single_button(new moodle_url('/mod/folder/edit.php',
-                    array('id' => $cm->id)), get_string('edit')),
-                    'mdl-align folder-edit-button');
+                $containercontents,
+                'mdl-align folder-edit-button');
         }
         return $output;
     }

@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,8 +17,7 @@
 /**
  * Strings for component 'imscp', language 'en', branch 'MOODLE_20_STABLE'
  *
- * @package    mod
- * @subpackage imscp
+ * @package mod_imscp
  * @copyright  1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -45,4 +43,5 @@ $string['page-mod-imscp-x'] = 'Any IMS content package module page';
 $string['packagefile'] = 'Package file';
 $string['pluginadministration'] = 'IMSCP administration';
 $string['pluginname'] = 'IMS content package';
+$string['search:activity'] = 'IMS content package activities';
 $string['toc'] = 'TOC';

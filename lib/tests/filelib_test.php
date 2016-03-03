@@ -84,7 +84,7 @@ class core_filelib_testcase extends advanced_testcase {
         global $CFG;
 
         // Test http success first.
-        $testhtml = "http://download.moodle.org/unittest/test.html";
+        $testhtml = $this->getExternalTestFileUrl('/test.html');
 
         $contents = download_file_content($testhtml);
         $this->assertSame('47250a973d1b88d9445f94db4ef2c97a', md5($contents));
@@ -109,7 +109,7 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame('', $response->error);
 
         // Test https success.
-        $testhtml = "https://download.moodle.org/unittest/test.html";
+        $testhtml = $this->getExternalTestFileUrl('/test.html', true);
 
         $contents = download_file_content($testhtml, null, null, false, 300, 20, true);
         $this->assertSame('47250a973d1b88d9445f94db4ef2c97a', md5($contents));
@@ -118,7 +118,7 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame('47250a973d1b88d9445f94db4ef2c97a', md5($contents));
 
         // Now 404.
-        $testhtml = "http://download.moodle.org/unittest/test.html_nonexistent";
+        $testhtml = $this->getExternalTestFileUrl('/test.html_nonexistent');
 
         $contents = download_file_content($testhtml);
         $this->assertFalse($contents);
@@ -129,17 +129,18 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame('404', $response->status);
         $this->assertTrue(is_array($response->headers));
         $this->assertRegExp('|^HTTP/1\.[01] 404 Not Found$|', rtrim($response->response_code));
-        $this->assertStringStartsWith('<!DOCTYPE', $response->results);
+        // Do not test the response starts with DOCTYPE here because some servers may return different headers.
         $this->assertSame('', $response->error);
 
         // Invalid url.
-        $testhtml = "ftp://download.moodle.org/unittest/test.html";
+        $testhtml = $this->getExternalTestFileUrl('/test.html');
+        $testhtml = str_replace('http://', 'ftp://', $testhtml);
 
         $contents = download_file_content($testhtml);
         $this->assertFalse($contents);
 
         // Test standard redirects.
-        $testurl = 'http://download.moodle.org/unittest/test_redir.php';
+        $testurl = $this->getExternalTestFileUrl('/test_redir.php');
 
         $contents = download_file_content("$testurl?redir=2");
         $this->assertSame('done', $contents);
@@ -152,13 +153,11 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame('done', $response->results);
         $this->assertSame('', $response->error);
 
+        // Commented out this block if there are performance problems.
         /*
-        // Commented out for performance reasons.
-
         $contents = download_file_content("$testurl?redir=6");
         $this->assertFalse(false, $contents);
         $this->assertDebuggingCalled();
-
         $response = download_file_content("$testurl?redir=6", null, null, true);
         $this->assertInstanceOf('stdClass', $response);
         $this->assertSame('0', $response->status);
@@ -168,7 +167,7 @@ class core_filelib_testcase extends advanced_testcase {
         */
 
         // Test relative redirects.
-        $testurl = 'http://download.moodle.org/unittest/test_relative_redir.php';
+        $testurl = $this->getExternalTestFileUrl('/test_relative_redir.php');
 
         $contents = download_file_content("$testurl");
         $this->assertSame('done', $contents);
@@ -178,13 +177,13 @@ class core_filelib_testcase extends advanced_testcase {
     }
 
     /**
-     * Test curl class.
+     * Test curl basics.
      */
-    public function test_curl_class() {
+    public function test_curl_basics() {
         global $CFG;
 
-        // Test https success.
-        $testhtml = "https://download.moodle.org/unittest/test.html";
+        // Test HTTP success.
+        $testhtml = $this->getExternalTestFileUrl('/test.html');
 
         $curl = new curl();
         $contents = $curl->get($testhtml);
@@ -211,11 +210,24 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertSame($contents, file_get_contents($tofile));
         @unlink($tofile);
 
+        // Test 404 request.
+        $curl = new curl();
+        $contents = $curl->get($this->getExternalTestFileUrl('/i.do.not.exist'));
+        $response = $curl->getResponse();
+        $this->assertSame('404 Not Found', reset($response));
+        $this->assertSame(0, $curl->get_errno());
+    }
+
+    public function test_curl_redirects() {
+        global $CFG;
+
         // Test full URL redirects.
-        $testurl = 'http://download.moodle.org/unittest/test_redir.php';
+        $testurl = $this->getExternalTestFileUrl('/test_redir.php');
 
         $curl = new curl();
         $contents = $curl->get("$testurl?redir=2", array(), array('CURLOPT_MAXREDIRS'=>2));
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(2, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -223,12 +235,26 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?redir=2", array(), array('CURLOPT_MAXREDIRS'=>2));
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(2, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
+        // This test was failing for people behind Squid proxies. Squid does not
+        // fully support HTTP 1.1, so converts things to HTTP 1.0, where the name
+        // of the status code is different.
+        reset($response);
+        if (key($response) === 'HTTP/1.0') {
+            $responsecode302 = '302 Moved Temporarily';
+        } else {
+            $responsecode302 = '302 Found';
+        }
+
         $curl = new curl();
         $contents = $curl->get("$testurl?redir=3", array(), array('CURLOPT_FOLLOWLOCATION'=>0));
+        $response = $curl->getResponse();
+        $this->assertSame($responsecode302, reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(302, $curl->info['http_code']);
         $this->assertSame('', $contents);
@@ -236,6 +262,8 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?redir=3", array(), array('CURLOPT_FOLLOWLOCATION'=>0));
+        $response = $curl->getResponse();
+        $this->assertSame($responsecode302, reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(302, $curl->info['http_code']);
         $this->assertSame('', $contents);
@@ -292,12 +320,16 @@ class core_filelib_testcase extends advanced_testcase {
         $this->assertFileExists($tofile);
         $this->assertSame('done', file_get_contents($tofile));
         @unlink($tofile);
+    }
 
+    public function test_curl_relative_redirects() {
         // Test relative location redirects.
-        $testurl = 'http://download.moodle.org/unittest/test_relative_redir.php';
+        $testurl = $this->getExternalTestFileUrl('/test_relative_redir.php');
 
         $curl = new curl();
         $contents = $curl->get($testurl);
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -305,15 +337,19 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get($testurl);
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
         // Test different redirect types.
-        $testurl = 'http://download.moodle.org/unittest/test_relative_redir.php';
+        $testurl = $this->getExternalTestFileUrl('/test_relative_redir.php');
 
         $curl = new curl();
         $contents = $curl->get("$testurl?type=301");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -321,12 +357,16 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?type=301");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
         $curl = new curl();
         $contents = $curl->get("$testurl?type=302");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -334,12 +374,16 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?type=302");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
         $curl = new curl();
         $contents = $curl->get("$testurl?type=303");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -347,12 +391,16 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?type=303");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
         $curl = new curl();
         $contents = $curl->get("$testurl?type=307");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -360,12 +408,16 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?type=307");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
 
         $curl = new curl();
         $contents = $curl->get("$testurl?type=308");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
@@ -373,9 +425,122 @@ class core_filelib_testcase extends advanced_testcase {
         $curl = new curl();
         $curl->emulateredirects = true;
         $contents = $curl->get("$testurl?type=308");
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
         $this->assertSame(0, $curl->get_errno());
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame('done', $contents);
+
+    }
+
+    public function test_curl_proxybypass() {
+        global $CFG;
+        $testurl = $this->getExternalTestFileUrl('/test.html');
+
+        $oldproxy = $CFG->proxyhost;
+        $oldproxybypass = $CFG->proxybypass;
+
+        // Test without proxy bypass and inaccessible proxy.
+        $CFG->proxyhost = 'i.do.not.exist';
+        $CFG->proxybypass = '';
+        $curl = new curl();
+        $contents = $curl->get($testurl);
+        $this->assertNotEquals(0, $curl->get_errno());
+        $this->assertNotEquals('47250a973d1b88d9445f94db4ef2c97a', md5($contents));
+
+        // Test with proxy bypass.
+        $testurlhost = parse_url($testurl, PHP_URL_HOST);
+        $CFG->proxybypass = $testurlhost;
+        $curl = new curl();
+        $contents = $curl->get($testurl);
+        $this->assertSame(0, $curl->get_errno());
+        $this->assertSame('47250a973d1b88d9445f94db4ef2c97a', md5($contents));
+
+        $CFG->proxyhost = $oldproxy;
+        $CFG->proxybypass = $oldproxybypass;
+    }
+
+    public function test_curl_post() {
+        $testurl = $this->getExternalTestFileUrl('/test_post.php');
+
+        // Test post request.
+        $curl = new curl();
+        $contents = $curl->post($testurl, 'data=moodletest');
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
+        $this->assertSame(0, $curl->get_errno());
+        $this->assertSame('OK', $contents);
+
+        // Test 100 requests.
+        $curl = new curl();
+        $curl->setHeader('Expect: 100-continue');
+        $contents = $curl->post($testurl, 'data=moodletest');
+        $response = $curl->getResponse();
+        $this->assertSame('200 OK', reset($response));
+        $this->assertSame(0, $curl->get_errno());
+        $this->assertSame('OK', $contents);
+    }
+
+    public function test_curl_file() {
+        $this->resetAfterTest();
+        $testurl = $this->getExternalTestFileUrl('/test_file.php');
+
+        $fs = get_file_storage();
+        $filerecord = array(
+            'contextid' => context_system::instance()->id,
+            'component' => 'test',
+            'filearea' => 'curl_post',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => 'test.txt'
+        );
+        $teststring = 'moodletest';
+        $testfile = $fs->create_file_from_string($filerecord, $teststring);
+
+        // Test post with file.
+        $data = array('testfile' => $testfile);
+        $curl = new curl();
+        $contents = $curl->post($testurl, $data);
+        $this->assertSame('OK', $contents);
+    }
+
+    public function test_curl_protocols() {
+
+        // HTTP and HTTPS requests were verified in previous requests. Now check
+        // that we can selectively disable some protocols.
+        $curl = new curl();
+
+        // Other protocols than HTTP(S) are disabled by default.
+        $testurl = 'file:///';
+        $curl->get($testurl);
+        $this->assertNotEmpty($curl->error);
+        $this->assertEquals(CURLE_UNSUPPORTED_PROTOCOL, $curl->errno);
+
+        $testurl = 'ftp://nowhere';
+        $curl->get($testurl);
+        $this->assertNotEmpty($curl->error);
+        $this->assertEquals(CURLE_UNSUPPORTED_PROTOCOL, $curl->errno);
+
+        $testurl = 'telnet://somewhere';
+        $curl->get($testurl);
+        $this->assertNotEmpty($curl->error);
+        $this->assertEquals(CURLE_UNSUPPORTED_PROTOCOL, $curl->errno);
+
+        // Protocols are also disabled during redirections.
+        $testurl = $this->getExternalTestFileUrl('/test_redir_proto.php');
+        $curl->get($testurl, array('proto' => 'file'));
+        $this->assertNotEmpty($curl->error);
+        $this->assertEquals(CURLE_UNSUPPORTED_PROTOCOL, $curl->errno);
+
+        $testurl = $this->getExternalTestFileUrl('/test_redir_proto.php');
+        $curl->get($testurl, array('proto' => 'ftp'));
+        $this->assertNotEmpty($curl->error);
+        $this->assertEquals(CURLE_UNSUPPORTED_PROTOCOL, $curl->errno);
+
+        $testurl = $this->getExternalTestFileUrl('/test_redir_proto.php');
+        $curl->get($testurl, array('proto' => 'telnet'));
+        $this->assertNotEmpty($curl->error);
+        $this->assertEquals(CURLE_UNSUPPORTED_PROTOCOL, $curl->errno);
     }
 
     /**
@@ -584,7 +749,7 @@ Connection: close
 HTTP/1.0 200 OK
 Server: Apache
 X-Lb-Nocache: true
-Cache-Control: private, max-age=15
+Cache-Control: private, max-age=15, no-transform
 ETag: "4d69af5d8ba873ea9192c489e151bd7b"
 Content-Type: text/html
 Date: Thu, 08 Dec 2011 14:44:53 GMT
@@ -600,7 +765,7 @@ EOF;
 HTTP/1.0 200 OK
 Server: Apache
 X-Lb-Nocache: true
-Cache-Control: private, max-age=15
+Cache-Control: private, max-age=15, no-transform
 ETag: "4d69af5d8ba873ea9192c489e151bd7b"
 Content-Type: text/html
 Date: Thu, 08 Dec 2011 14:44:53 GMT
@@ -658,5 +823,199 @@ EOF;
         $this->assertSame($httpsexpected, curl::strip_double_headers($httpsexample));
         // Test it does nothing to the 'plain' data.
         $this->assertSame($httpsexpected, curl::strip_double_headers($httpsexpected));
+    }
+
+    /**
+     * Tests the get_mimetype_description function.
+     */
+    public function test_get_mimetype_description() {
+        $this->resetAfterTest();
+
+        // Test example type (.doc).
+        $this->assertEquals(get_string('application/msword', 'mimetypes'),
+                get_mimetype_description(array('filename' => 'test.doc')));
+
+        // Test an unknown file type.
+        $this->assertEquals(get_string('document/unknown', 'mimetypes'),
+                get_mimetype_description(array('filename' => 'test.frog')));
+
+        // Test a custom filetype with no lang string specified.
+        core_filetypes::add_type('frog', 'application/x-frog', 'document');
+        $this->assertEquals('application/x-frog',
+                get_mimetype_description(array('filename' => 'test.frog')));
+
+        // Test custom description.
+        core_filetypes::update_type('frog', 'frog', 'application/x-frog', 'document',
+                array(), '', 'Froggy file');
+        $this->assertEquals('Froggy file',
+                get_mimetype_description(array('filename' => 'test.frog')));
+
+        // Test custom description using multilang filter.
+        filter_set_global_state('multilang', TEXTFILTER_ON);
+        filter_set_applies_to_strings('multilang', true);
+        core_filetypes::update_type('frog', 'frog', 'application/x-frog', 'document',
+                array(), '', '<span lang="en" class="multilang">Green amphibian</span>' .
+                '<span lang="fr" class="multilang">Amphibian vert</span>');
+        $this->assertEquals('Green amphibian',
+                get_mimetype_description(array('filename' => 'test.frog')));
+    }
+
+    /**
+     * Tests the get_mimetypes_array function.
+     */
+    public function test_get_mimetypes_array() {
+        $mimeinfo = get_mimetypes_array();
+
+        // Test example MIME type (doc).
+        $this->assertEquals('application/msword', $mimeinfo['doc']['type']);
+        $this->assertEquals('document', $mimeinfo['doc']['icon']);
+        $this->assertEquals(array('document'), $mimeinfo['doc']['groups']);
+        $this->assertFalse(isset($mimeinfo['doc']['string']));
+        $this->assertFalse(isset($mimeinfo['doc']['defaulticon']));
+        $this->assertFalse(isset($mimeinfo['doc']['customdescription']));
+
+        // Check the less common fields using other examples.
+        $this->assertEquals('image', $mimeinfo['png']['string']);
+        $this->assertEquals(true, $mimeinfo['txt']['defaulticon']);
+    }
+
+    /**
+     * Tests for get_mimetype_for_sending function.
+     */
+    public function test_get_mimetype_for_sending() {
+        // Without argument.
+        $this->assertEquals('application/octet-stream', get_mimetype_for_sending());
+
+        // Argument is null.
+        $this->assertEquals('application/octet-stream', get_mimetype_for_sending(null));
+
+        // Filename having no extension.
+        $this->assertEquals('application/octet-stream', get_mimetype_for_sending('filenamewithoutextension'));
+
+        // Test using the extensions listed from the get_mimetypes_array function.
+        $mimetypes = get_mimetypes_array();
+        foreach ($mimetypes as $ext => $info) {
+            if ($ext === 'xxx') {
+                $this->assertEquals('application/octet-stream', get_mimetype_for_sending('SampleFile.' . $ext));
+            } else {
+                $this->assertEquals($info['type'], get_mimetype_for_sending('SampleFile.' . $ext));
+            }
+        }
+    }
+
+    /**
+     * Test curl agent settings.
+     */
+    public function test_curl_useragent() {
+        $curl = new testable_curl();
+        $options = $curl->get_options();
+        $this->assertNotEmpty($options);
+
+        $curl->call_apply_opt($options);
+        $this->assertTrue(in_array('User-Agent: MoodleBot/1.0', $curl->header));
+        $this->assertFalse(in_array('User-Agent: Test/1.0', $curl->header));
+
+        $options['CURLOPT_USERAGENT'] = 'Test/1.0';
+        $curl->call_apply_opt($options);
+        $this->assertTrue(in_array('User-Agent: Test/1.0', $curl->header));
+        $this->assertFalse(in_array('User-Agent: MoodleBot/1.0', $curl->header));
+
+        $curl->set_option('CURLOPT_USERAGENT', 'AnotherUserAgent/1.0');
+        $curl->call_apply_opt();
+        $this->assertTrue(in_array('User-Agent: AnotherUserAgent/1.0', $curl->header));
+        $this->assertFalse(in_array('User-Agent: Test/1.0', $curl->header));
+
+        $curl->set_option('CURLOPT_USERAGENT', 'AnotherUserAgent/1.1');
+        $options = $curl->get_options();
+        $curl->call_apply_opt($options);
+        $this->assertTrue(in_array('User-Agent: AnotherUserAgent/1.1', $curl->header));
+        $this->assertFalse(in_array('User-Agent: AnotherUserAgent/1.0', $curl->header));
+
+        $curl->unset_option('CURLOPT_USERAGENT');
+        $curl->call_apply_opt();
+        $this->assertTrue(in_array('User-Agent: MoodleBot/1.0', $curl->header));
+
+        // Finally, test it via exttests, to ensure the agent is sent properly.
+        // Matching.
+        $testurl = $this->getExternalTestFileUrl('/test_agent.php');
+        $extcurl = new curl();
+        $contents = $extcurl->get($testurl, array(), array('CURLOPT_USERAGENT' => 'AnotherUserAgent/1.2'));
+        $response = $extcurl->getResponse();
+        $this->assertSame('200 OK', reset($response));
+        $this->assertSame(0, $extcurl->get_errno());
+        $this->assertSame('OK', $contents);
+        // Not matching.
+        $contents = $extcurl->get($testurl, array(), array('CURLOPT_USERAGENT' => 'NonMatchingUserAgent/1.2'));
+        $response = $extcurl->getResponse();
+        $this->assertSame('200 OK', reset($response));
+        $this->assertSame(0, $extcurl->get_errno());
+        $this->assertSame('', $contents);
+    }
+}
+
+/**
+ * Test-specific class to allow easier testing of curl functions.
+ *
+ * @copyright 2015 Dave Cooper
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class testable_curl extends curl {
+    /**
+     * Accessor for private options array using reflection.
+     *
+     * @return array
+     */
+    public function get_options() {
+        // Access to private property.
+        $rp = new ReflectionProperty('curl', 'options');
+        $rp->setAccessible(true);
+        return $rp->getValue($this);
+    }
+
+    /**
+     * Setter for private options array using reflection.
+     *
+     * @param array $options
+     */
+    public function set_options($options) {
+        // Access to private property.
+        $rp = new ReflectionProperty('curl', 'options');
+        $rp->setAccessible(true);
+        $rp->setValue($this, $options);
+    }
+
+    /**
+     * Setter for individual option.
+     * @param string $option
+     * @param string $value
+     */
+    public function set_option($option, $value) {
+        $options = $this->get_options();
+        $options[$option] = $value;
+        $this->set_options($options);
+    }
+
+    /**
+     * Unsets an option on the curl object
+     * @param string $option
+     */
+    public function unset_option($option) {
+        $options = $this->get_options();
+        unset($options[$option]);
+        $this->set_options($options);
+    }
+
+    /**
+     * Wrapper to access the private curl::apply_opt() method using reflection.
+     *
+     * @param array $options
+     * @return resource The curl handle
+     */
+    public function call_apply_opt($options = null) {
+        // Access to private method.
+        $rm = new ReflectionMethod('curl', 'apply_opt');
+        $rm->setAccessible(true);
+        $ch = curl_init();
+        return $rm->invoke($this, $ch, $options);
     }
 }

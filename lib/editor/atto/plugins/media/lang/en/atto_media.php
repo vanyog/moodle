@@ -22,12 +22,10 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$string['pluginname'] = 'Media';
-$string['media'] = 'Media';
-$string['createmedia'] = 'Insert media';
-$string['enterurl'] = 'Enter URL';
-$string['entername'] = 'Enter name';
 $string['browserepositories'] = 'Browse repositories...';
-$string['accessibilityhint'] = '<p>Web content accessibility guidelines (WCAG):<br/><ul><li><a href="http://www.w3.org/TR/WCAG20/#text-equiv" target="_blank">Text Alternatives</a></li></ul></p>';
-$string['width'] = 'Width';
+$string['createmedia'] = 'Insert media';
+$string['entername'] = 'Enter name';
+$string['enterurl'] = 'Enter URL';
 $string['height'] = 'Height';
+$string['pluginname'] = 'Media';
+$string['width'] = 'Width';

@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,8 +17,7 @@
 /**
  * Strings for component 'workshop', language 'en', branch 'MOODLE_20_STABLE'
  *
- * @package    mod
- * @subpackage workshop
+ * @package    mod_workshop
  * @copyright  2009 David Mudrak <david@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -94,6 +92,7 @@ $string['daystoday'] = 'today';
 $string['daystomorrow'] = 'tomorrow';
 $string['daysyesterday'] = 'yesterday';
 $string['deadlinesignored'] = 'Time restrictions do not apply to you';
+$string['deletesubmission'] = 'Delete submission';
 $string['editassessmentform'] = 'Edit assessment form';
 $string['editassessmentformstrategy'] = 'Edit assessment form ({$a})';
 $string['editingassessmentform'] = 'Editing assessment form';
@@ -106,7 +105,18 @@ $string['evaluation'] = 'Grading evaluation';
 $string['evaluationmethod'] = 'Grading evaluation method';
 $string['evaluationmethod_help'] = 'The grading evaluation method determines how the grade for assessment is calculated. You can let it re-calculate grades repeatedly with different settings unless you are happy with the result.';
 $string['evaluationsettings'] = 'Grading evaluation settings';
-$string['event_assessable_uploaded'] = 'A submission has been uploaded.';
+$string['eventassessableuploaded'] = 'A submission has been uploaded.';
+$string['eventassessmentevaluationsreset'] = 'Assessment evaluations reset';
+$string['eventassessmentevaluated'] = 'Assessment evaluated';
+$string['eventassessmentreevaluated'] = 'Assessment re-evaluated';
+$string['eventsubmissionassessed'] = 'Submission assessed';
+$string['eventsubmissionassessmentsreset'] = 'Submission assessments cleared';
+$string['eventsubmissioncreated'] = 'Submission created';
+$string['eventsubmissionreassessed'] = 'Submission re-assessed';
+$string['eventsubmissionupdated'] = 'Submission updated';
+$string['eventsubmissiondeleted'] = 'Submission deleted';
+$string['eventsubmissionviewed'] = 'Submission viewed';
+$string['eventphaseswitched'] = 'Phase switched';
 $string['example'] = 'Example submission';
 $string['exampleadd'] = 'Add example submission';
 $string['exampleassess'] = 'Assess example submission';
@@ -146,6 +156,8 @@ $string['gradeover'] = 'Override grade for submission';
 $string['gradesreport'] = 'Workshop grades report';
 $string['gradereceivedfrom'] = '&lt;';
 $string['gradeinfo'] = 'Grade: {$a->received} of {$a->max}';
+$string['gradetopasssubmission'] = 'Submission grade to pass';
+$string['gradetopassgrading'] = 'Assessment grade to pass';
 $string['gradinggrade'] = 'Grade for assessment';
 $string['gradinggrade_help'] = 'This setting specifies the maximum grade that may be obtained for submission assessment.';
 $string['gradinggradecalculated'] = 'Calculated grade for assessment';
@@ -183,9 +195,10 @@ $string['nosubmissionfound'] = 'No submission found for this user';
 $string['nosubmissions'] = 'No submissions yet in this workshop';
 $string['nothingtoreview'] = 'Nothing to review';
 $string['notassessed'] = 'Not assessed yet';
-$string['notoverridden'] = 'Not overriden';
+$string['notoverridden'] = 'Not overridden';
 $string['noworkshops'] = 'There are no workshops in this course';
 $string['noyoursubmission'] = 'You have not submitted your work yet';
+$string['nothingfound'] = 'Nothing to display';
 $string['nullgrade'] = '-';
 $string['overallfeedback'] = 'Overall feedback';
 $string['overallfeedbackfiles'] = 'Maximum number of overall feedback attachments';
@@ -216,10 +229,17 @@ $string['reassess'] = 'Re-assess';
 $string['receivedgrades'] = 'Grades received';
 $string['recentassessments'] = 'Workshop assessments:';
 $string['recentsubmissions'] = 'Workshop submissions:';
+$string['resetassessments'] = 'Delete all assessments';
+$string['resetassessments_help'] = 'You can choose to delete just allocated assessments without affecting submissions. If submissions are to be deleted, their assessments will be deleted implicitly and this option is ignored. Note this also includes assessments of example submissions.';
+$string['resetsubmissions'] = 'Delete all submissions';
+$string['resetsubmissions_help'] = 'All the submissions and their assessments will be deleted. This does not affect example submissions.';
+$string['resetphase'] = 'Switch to the setup phase';
+$string['resetphase_help'] = 'If enabled, all workshops will be put into the initial setup phase.';
 $string['saveandclose'] = 'Save and close';
 $string['saveandcontinue'] = 'Save and continue editing';
 $string['saveandpreview'] = 'Save and preview';
 $string['saveandshownext'] = 'Save and show next';
+$string['search:activity'] = 'Workshop activities';
 $string['selfassessmentdisabled'] = 'Self-assessment disabled';
 $string['showingperpage'] = 'Showing {$a} items per page';
 $string['showingperpagechange'] = 'Change ...';
@@ -235,9 +255,11 @@ $string['strategy_help'] = 'The grading strategy determines the assessment form 
 * Rubric - A level assessment is given regarding specified criteria';
 $string['strategyhaschanged'] = 'The workshop grading strategy has changed since the form was opened for editing.';
 $string['submission'] = 'Submission';
-$string['submissionby'] = 'Submission by {$a}';
 $string['submissionattachment'] = 'Attachment';
+$string['submissionby'] = 'Submission by {$a}';
 $string['submissioncontent'] = 'Submission content';
+$string['submissiondeleteconfirm'] = 'Are you sure you want to delete the following submission?';
+$string['submissiondeleteconfirmassess'] = 'Are you sure you want to delete the following submission? Note this will also delete {$a->count} assessments associated with this submission, which may affect the reviewers\' grades.';
 $string['submissionend'] = 'Submissions deadline';
 $string['submissionendbeforestart'] = 'Submissions deadline can not be specified before the open for submissions date';
 $string['submissionendevent'] = '{$a} (submissions deadline)';
@@ -249,11 +271,14 @@ If you enable this feature, it is recommended to set up the scheduled allocation
 $string['submissiongrade'] = 'Grade for submission';
 $string['submissiongrade_help'] = 'This setting specifies the maximum grade that may be obtained for submitted work.';
 $string['submissiongradeof'] = 'Grade for submission (of {$a})';
+$string['submissionlastmodified'] = 'Last modified';
 $string['submissionsettings'] = 'Submission settings';
 $string['submissionstart'] = 'Open for submissions from';
 $string['submissionstartevent'] = '{$a} (opens for submissions)';
 $string['submissionstartdatetime'] = 'Open for submissions from {$a->daydatetime} ({$a->distanceday})';
 $string['submissiontitle'] = 'Title';
+$string['submissionsreport'] = 'Workshop submissions report';
+$string['submittednotsubmitted'] = 'Submitted ({$a->submitted}) / not submitted ({$a->notsubmitted})';
 $string['subplugintype_workshopallocation'] = 'Submissions allocation method';
 $string['subplugintype_workshopallocation_plural'] = 'Submissions allocation methods';
 $string['subplugintype_workshopeval'] = 'Grading evaluation method';
@@ -296,6 +321,7 @@ $string['withoutsubmission'] = 'Reviewer without own submission';
 $string['workshop:addinstance'] = 'Add a new workshop';
 $string['workshop:allocate'] = 'Allocate submissions for review';
 $string['workshop:editdimensions'] = 'Edit assessment forms';
+$string['workshop:deletesubmissions'] = 'Delete submissions';
 $string['workshop:ignoredeadlines'] = 'Ignore time restrictions';
 $string['workshop:manageexamples'] = 'Manage example submissions';
 $string['workshopname'] = 'Workshop name';

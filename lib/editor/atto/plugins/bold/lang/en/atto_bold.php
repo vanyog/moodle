@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'Bold';
-$string['bold'] = 'Bold';

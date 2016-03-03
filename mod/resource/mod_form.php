@@ -18,8 +18,7 @@
 /**
  * Resource configuration form
  *
- * @package    mod
- * @subpackage resource
+ * @package    mod_resource
  * @copyright  2009 Petr Skoda  {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -56,7 +55,7 @@ class mod_resource_mod_form extends moodleform_mod {
         }
         $mform->addRule('name', null, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
-        $this->add_intro_editor($config->requiremodintro);
+        $this->standard_intro_elements();
 
         //-------------------------------------------------------
         $mform->addElement('header', 'contentsection', get_string('contentheader', 'resource'));
@@ -103,6 +102,9 @@ class mod_resource_mod_form extends moodleform_mod {
         $mform->addElement('checkbox', 'showtype', get_string('showtype', 'resource'));
         $mform->setDefault('showtype', $config->showtype);
         $mform->addHelpButton('showtype', 'showtype', 'resource');
+        $mform->addElement('checkbox', 'showdate', get_string('showdate', 'resource'));
+        $mform->setDefault('showdate', $config->showdate);
+        $mform->addHelpButton('showdate', 'showdate', 'resource');
 
         if (array_key_exists(RESOURCELIB_DISPLAY_POPUP, $options)) {
             $mform->addElement('text', 'popupwidth', get_string('popupwidth', 'resource'), array('size'=>3));
@@ -125,13 +127,6 @@ class mod_resource_mod_form extends moodleform_mod {
         if (array_key_exists(RESOURCELIB_DISPLAY_AUTO, $options) or
           array_key_exists(RESOURCELIB_DISPLAY_EMBED, $options) or
           array_key_exists(RESOURCELIB_DISPLAY_FRAME, $options)) {
-            $mform->addElement('checkbox', 'printheading', get_string('printheading', 'resource'));
-            $mform->disabledIf('printheading', 'display', 'eq', RESOURCELIB_DISPLAY_POPUP);
-            $mform->disabledIf('printheading', 'display', 'eq', RESOURCELIB_DISPLAY_DOWNLOAD);
-            $mform->disabledIf('printheading', 'display', 'eq', RESOURCELIB_DISPLAY_OPEN);
-            $mform->disabledIf('printheading', 'display', 'eq', RESOURCELIB_DISPLAY_NEW);
-            $mform->setDefault('printheading', $config->printheading);
-
             $mform->addElement('checkbox', 'printintro', get_string('printintro', 'resource'));
             $mform->disabledIf('printintro', 'display', 'eq', RESOURCELIB_DISPLAY_POPUP);
             $mform->disabledIf('printintro', 'display', 'eq', RESOURCELIB_DISPLAY_DOWNLOAD);
@@ -168,9 +163,6 @@ class mod_resource_mod_form extends moodleform_mod {
             if (isset($displayoptions['printintro'])) {
                 $default_values['printintro'] = $displayoptions['printintro'];
             }
-            if (isset($displayoptions['printheading'])) {
-                $default_values['printheading'] = $displayoptions['printheading'];
-            }
             if (!empty($displayoptions['popupwidth'])) {
                 $default_values['popupwidth'] = $displayoptions['popupwidth'];
             }
@@ -188,6 +180,11 @@ class mod_resource_mod_form extends moodleform_mod {
                 $default_values['showtype'] = $displayoptions['showtype'];
             } else {
                 $default_values['showtype'] = 0;
+            }
+            if (!empty($displayoptions['showdate'])) {
+                $default_values['showdate'] = $displayoptions['showdate'];
+            } else {
+                $default_values['showdate'] = 0;
             }
         }
     }

@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -18,7 +17,7 @@
 /**
  * Strings for component 'role', language 'en', branch 'MOODLE_20_STABLE'
  *
- * @package   role
+ * @package   core_role
  * @copyright 1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -87,8 +86,6 @@ $string['blog:associatemodule'] = 'This capability is deprecated and does nothin
 $string['blog:create'] = 'Create new blog entries';
 $string['blog:manageentries'] = 'Edit and manage entries';
 $string['blog:manageexternal'] = 'Edit and manage external blogs';
-$string['blog:manageofficialtags'] = 'Manage official tags';
-$string['blog:managepersonaltags'] = 'Manage personal tags';
 $string['blog:search'] = 'Search blog entries';
 $string['blog:view'] = 'View blog entries';
 $string['blog:viewdrafts'] = 'View draft blog entries';
@@ -108,13 +105,13 @@ $string['cohort:view'] = 'View site-wide cohorts';
 $string['cohort:manage'] = 'Create, delete and move cohorts';
 $string['comment:delete'] = 'Delete comments';
 $string['comment:post'] = 'Post comments';
-$string['comment:view'] = 'Read comments';
+$string['comment:view'] = 'View comments';
 $string['community:add'] = 'Use the community block to search hubs and find courses';
 $string['community:download'] = 'Download a course from the community block';
 $string['confirmaddadmin'] = 'Do you really want to add user <strong>{$a}</strong> as new site administrator?';
 $string['confirmdeladmin'] = 'Do you really want to remove user <strong>{$a}</strong> from the list of site administrators?';
-$string['confirmroleprevent'] = 'Do you really want to remove <strong>{$a->role}</strong> from the list of allowed roles for capability {$a->cap} in context {$a->context}?';
-$string['confirmroleunprohibit'] = 'Do you really want to remove <strong>{$a->role}</strong> from the list of prohibited roles for capability {$a->cap} in context {$a->context}?';
+$string['confirmroleprevent'] = 'Do you really want to remove <strong>"{$a->role}"</strong> from the list of allowed roles for capability "{$a->cap}" in context "{$a->context}"?';
+$string['confirmroleunprohibit'] = 'Do you really want to remove <strong>"{$a->role}"</strong> from the list of prohibited roles for capability "{$a->cap}" in context "{$a->context}"?';
 $string['confirmunassign'] = 'Are you sure you wish to remove this role from this user?';
 $string['confirmunassigntitle'] = 'Confirm role change';
 $string['confirmunassignyes'] = 'Remove';
@@ -124,7 +121,7 @@ $string['course:activityvisibility'] = 'Hide/show activities';
 $string['course:bulkmessaging'] = 'Send a message to many people';
 $string['course:create'] = 'Create courses';
 $string['course:delete'] = 'Delete courses';
-$string['course:viewsuspendedusers'] = 'Can view suspended users.';
+$string['course:viewsuspendedusers'] = 'View suspended users';
 $string['course:changecategory'] = 'Change course category';
 $string['course:changefullname'] = 'Change course full name';
 $string['course:changeidnumber'] = 'Change course ID number';
@@ -142,10 +139,13 @@ $string['course:managescales'] = 'Manage scales';
 $string['course:markcomplete'] = 'Mark users as complete in course completion';
 $string['course:movesections'] = 'Move sections';
 $string['course:publish'] = 'Publish a course into hub';
+$string['course:renameroles'] = 'Rename roles';
 $string['course:request'] = 'Request new courses';
 $string['course:reset'] = 'Reset course';
+$string['course:reviewotherusers'] = 'Review other users';
 $string['course:sectionvisibility'] = 'Control section visibility';
 $string['course:setcurrentsection'] = 'Set current section';
+$string['course:tag'] = 'Change course tags';
 $string['course:update'] = 'Update course settings';
 $string['course:useremail'] = 'Enable/disable email address';
 $string['course:view'] = 'View courses without participation';
@@ -170,10 +170,10 @@ $string['defaultx'] = 'Default: {$a}';
 $string['defineroles'] = 'Define roles';
 $string['deletecourseoverrides'] = 'Delete all overrides in course';
 $string['deletelocalroles'] = 'Delete all local role assignments';
-$string['deleterolesure'] = 'Are you sure that you want to delete role "{$a->name} ({$a->shortname})"?</p><p>Currently this role is assigned to {$a->count} users.';
+$string['deleterolesure'] = '<p>Are you sure that you want to delete role "{$a->name} ({$a->shortname})"?</p><p>Currently this role is assigned to {$a->count} users.</p>';
 $string['deletexrole'] = 'Delete {$a} role';
 $string['duplicaterole'] = 'Duplicate role';
-$string['duplicaterolesure'] = 'Are you sure that you want to duplicate role "{$a->name} ({$a->shortname})"?</p>';
+$string['duplicaterolesure'] = '<p>Are you sure that you want to duplicate role "{$a->name} ({$a->shortname})"?</p>';
 $string['editingrolex'] = 'Editing role \'{$a}\'';
 $string['editrole'] = 'Edit role';
 $string['editxrole'] = 'Edit {$a} role';
@@ -217,7 +217,6 @@ $string['grade:unlock'] = 'Unlock grades or items';
 $string['grade:view'] = 'View own grades';
 $string['grade:viewall'] = 'View grades of other users';
 $string['grade:viewhidden'] = 'View hidden grades for owner';
-$string['hidden'] = 'Hidden';
 $string['highlightedcellsshowdefault'] = 'The permissions highlighted in the table below are the defaults for the role archetype currently selected above.';
 $string['highlightedcellsshowinherit'] = 'The highlighted cells in the table below show the permission (if any) that will be inherited. Apart from the capabilities whose permission you actually want to alter, you should leave everything set to Inherit.';
 $string['checkglobalpermissions'] = 'Check system permissions';
@@ -249,8 +248,8 @@ $string['manageroles'] = 'Manage roles';
 $string['maybeassignedin'] = 'Context types where this role may be assigned';
 $string['morethan'] = 'More than {$a}';
 $string['multipleroles'] = 'Multiple roles';
-$string['my:manageblocks'] = 'Manage My home page blocks';
-$string['my:configsyspages'] = 'Configure system templates for My home pages';
+$string['my:manageblocks'] = 'Manage Dashboard page blocks';
+$string['my:configsyspages'] = 'Configure system templates for Dashboard pages';
 $string['neededroles'] = 'Roles with permission';
 $string['nocapabilitiesincontext'] = 'No capabilities available in this context';
 $string['noneinthisx'] = 'None in this {$a}';
@@ -258,7 +257,7 @@ $string['noneinthisxmatching'] = 'No users matching \'{$a->search}\' in this {$a
 $string['norole'] = 'No role';
 $string['noroles'] = 'No roles';
 $string['noroleassignments'] = 'This user does not have any role assignments anywhere in this site.';
-$string['notabletoassignroleshere'] = 'You are not able to assign any roles here';
+$string['notabletoassignroleshere'] = 'Assigning of roles in this context has not been enabled by an administrator.';
 $string['notabletooverrideroleshere'] = 'You are not able to override the permissions on any roles here';
 $string['notes:manage'] = 'Manage notes';
 $string['notes:view'] = 'View notes';
@@ -322,7 +321,7 @@ $string['restore:userinfo'] = 'Restore user data';
 $string['restore:viewautomatedfilearea'] = 'Restore courses from automated backups';
 $string['risks'] = 'Risks';
 $string['roleallowheader'] = 'Allow role:';
-$string['roleallowinfo'] = 'Select a role to be added to the list of allowed roles in context {$a->context}, capability {$a->cap}:';
+$string['roleallowinfo'] = 'Select a role to be added to the list of allowed roles in context "{$a->context}", capability "{$a->cap}":';
 $string['role:assign'] = 'Assign roles to users';
 $string['roleassignments'] = 'Role assignments';
 $string['roledefinitions'] = 'Role definitions';
@@ -332,7 +331,7 @@ $string['role:manage'] = 'Create and manage roles';
 $string['role:override'] = 'Override permissions for others';
 $string['role:review'] = 'Review permissions for others';
 $string['roleprohibitheader'] = 'Prohibit role';
-$string['roleprohibitinfo'] = 'Select a role to be added to the list of prohibited roles in context {$a->context}, capability {$a->cap}:';
+$string['roleprohibitinfo'] = 'Select a role to be added to the list of prohibited roles in context "{$a->context}", capability "{$a->cap}":';
 $string['rolerisks'] = 'Role risks';
 $string['roles'] = 'Roles';
 $string['roles_help'] = 'A role is a collection of permissions defined for the whole system that you can assign to specific users in specific contexts.';
@@ -346,6 +345,7 @@ $string['role:switchroles'] = 'Switch to other roles';
 $string['roletoassign'] = 'Role to assign';
 $string['roletooverride'] = 'Role to override';
 $string['safeoverridenotice'] = 'Note: Capabilities with higher risks are locked because you are only allowed to override safe capabilities.';
+$string['search:query'] = 'Perform site-wide searches';
 $string['selectanotheruser'] = 'Select another user';
 $string['selectauser'] = 'Select a user';
 $string['selectrole'] = 'Select a role';
@@ -356,8 +356,11 @@ $string['siteadministrators'] = 'Site administrators';
 $string['site:approvecourse'] = 'Approve course creation';
 $string['site:backup'] = 'Backup courses';
 $string['site:config'] = 'Change site configuration';
+$string['site:deleteanymessage'] = 'Delete any messages on the site';
+$string['site:deleteownmessage'] = 'Delete messages sent by and to the user';
 $string['site:doanything'] = 'Allowed to do everything';
 $string['site:doclinks'] = 'Show links to offsite docs';
+$string['site:forcelanguage'] = 'Override course language';
 $string['site:import'] = 'Import other courses into a course';
 $string['site:manageblocks'] = 'Manage blocks on a page';
 $string['site:mnetloginfromremote'] = 'Login from a remote application via MNet';
@@ -371,7 +374,6 @@ $string['site:viewfullnames'] = 'Always see full names of users';
 $string['site:viewparticipants'] = 'View participants';
 $string['site:viewreports'] = 'View reports';
 $string['site:viewuseridentity'] = 'See full user identity in lists';
-$string['tag:create'] = 'Create new tags';
 $string['tag:edit'] = 'Edit existing tags';
 $string['tag:editblocks'] = 'Edit blocks in tags pages';
 $string['tag:manage'] = 'Manage all tags';
@@ -394,12 +396,13 @@ $string['user:manageblocks'] = 'Manage blocks on user profile of other users';
 $string['user:manageownblocks'] = 'Manage blocks on own public user profile';
 $string['user:manageownfiles'] = 'Manage files on own private file areas';
 $string['user:managesyspages'] = 'Configure default page layout for public user profiles';
-$string['user:readuserblogs'] = 'See all user blogs';
-$string['user:readuserposts'] = 'See all user posts';
+$string['user:readuserblogs'] = 'View all user blogs';
+$string['user:readuserposts'] = 'View all user forum posts';
 $string['user:update'] = 'Update user profiles';
 $string['user:viewalldetails'] = 'View user full information';
 $string['user:viewdetails'] = 'View user profiles';
 $string['user:viewhiddendetails'] = 'View hidden details of users';
+$string['user:viewlastip'] = 'View user last ip address';
 $string['user:viewuseractivitiesreport'] = 'See user activity reports';
 $string['user:viewusergrades'] = 'View user grades';
 $string['roleresetdefaults'] = 'Defaults';
@@ -420,3 +423,7 @@ $string['whydoesuserhavecap'] = 'Why does {$a->fullname} have capability {$a->ca
 $string['whydoesusernothavecap'] = 'Why does {$a->fullname} not have capability {$a->capability} in context {$a->context}?';
 $string['xroleassignments'] = '{$a}\'s role assignments';
 $string['xuserswiththerole'] = 'Users with the role "{$a->role}"';
+
+// Deprecated in 3.0.
+
+$string['tag:create'] = 'Create new tags';

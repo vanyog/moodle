@@ -15,38 +15,21 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Atto text editor integration version file.
+ * Atto text editor align plugin lib.
  *
- * @package    atto_indent
- * @copyright  2013 Damyon Wiese  <damyon@moodle.com>
+ * @package    atto_align
+ * @copyright  2014 Jason Fowler
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Initialise this plugin
- * @param string $elementid
+ * Initialise the strings required for JS.
+ *
+ * @return void
  */
-function atto_indent_init_editor($elementid) {
-    global $PAGE, $OUTPUT;
-
-    $icon = $OUTPUT->pix_icon('indent',
-                              get_string('indent', 'atto_indent'),
-                              'atto_indent',
-                              array('class'=>'icon'));
-
-    $PAGE->requires->yui_module('moodle-atto_indent-button',
-                                'M.atto_indent.init',
-                                array(array('elementid'=>$elementid, 'icon'=>$icon)),
-                                true);
-
-}
-
-/**
- * Return the order this plugin should be displayed in the toolbar
- * @return int
- */
-function atto_indent_sort_order() {
-    return 5;
+function atto_indent_strings_for_js() {
+    global $PAGE;
+    $PAGE->requires->strings_for_js(array('indent', 'outdent'), 'atto_indent');
 }

@@ -82,9 +82,10 @@ function toolbook_importhtml_import_chapters($package, $type, $book, $context, $
                 }
 
                 $chapter->id = $DB->insert_record('book_chapters', $chapter);
+                $chapter = $DB->get_record('book_chapters', array('id' => $chapter->id));
                 $chapters[$chapter->id] = $chapter;
 
-                add_to_log($book->course, 'book', 'add chapter', 'view.php?id='.$context->instanceid.'&chapterid='.$chapter->id, $chapter->id, $context->instanceid);
+                \mod_book\event\chapter_created::create_from_chapter($book, $context, $chapter)->trigger();
             }
         }
     }
@@ -138,7 +139,7 @@ function toolbook_importhtml_import_chapters($package, $type, $book, $context, $
                 foreach ($allchapters as $target) {
                     if ($target->importsrc === $chapterpath) {
                         $newcontent = str_replace($match, 'href="'.new moodle_url('/mod/book/view.php',
-                                array('id'=>$context->instanceid, 'chapter'=>$target->id)).'"', $newcontent);
+                                array('id'=>$context->instanceid, 'chapterid'=>$target->id)).'"', $newcontent);
                     }
                 }
             }
@@ -148,7 +149,6 @@ function toolbook_importhtml_import_chapters($package, $type, $book, $context, $
         }
     }
 
-    add_to_log($book->course, 'course', 'update mod', '../mod/book/view.php?id='.$context->instanceid, 'book '.$book->id);
     $fs->delete_area_files($context->id, 'mod_book', 'importhtmltemp', 0);
 
     // update the revision flag - this takes a long time, better to refetch the current value

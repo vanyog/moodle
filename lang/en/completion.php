@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -42,7 +41,7 @@ $string['completed'] = 'Completed';
 $string['completedunlocked'] = 'Completion options unlocked';
 $string['completedunlockedtext'] = 'When you save changes, completion state for all students will be erased. If you change your mind about this, do not save the form.';
 $string['completedwarning'] = 'Completion options locked';
-$string['completedwarningtext'] = 'One or more students ({$a}) has already marked this activity as completed. Changing completion options will erase their completion state and may cause confusion. Thus the options have been locked and should not be unlocked unless absolutely necessary.';
+$string['completedwarningtext'] = 'This activity has already been marked as completed for {$a} participant(s). Changing completion options will erase their completion state and may cause confusion. Thus the options have been locked and should not be unlocked unless absolutely necessary.';
 $string['completion'] = 'Completion tracking';
 $string['completion-alt-auto-enabled'] = 'The system marks this item complete according to conditions: {$a}';
 $string['completion-alt-auto-fail'] = 'Completed: {$a} (did not achieve pass grade)';
@@ -65,6 +64,8 @@ A tick next to the activity name on the course page indicates when the activity 
 $string['completion_link'] = 'activity/completion';
 $string['completion_manual'] = 'Students can manually mark the activity as completed';
 $string['completion_none'] = 'Do not indicate activity completion';
+$string['completionactivitydefault'] = 'Use activity default';
+$string['completiondefault'] = 'Default completion tracking';
 $string['completiondisabled'] = 'Disabled, not shown in activity settings';
 $string['completionenabled'] = 'Enabled, control via completion and activity settings';
 $string['completionexpected'] = 'Expect completed on';
@@ -88,6 +89,7 @@ $string['completionusegrade_desc'] = 'Student must receive a grade to complete t
 $string['completionusegrade_help'] = 'If enabled, the activity is considered complete when a student receives a grade. Pass and fail icons may be displayed if a pass grade for the activity has been set.';
 $string['completionview'] = 'Require view';
 $string['completionview_desc'] = 'Student must view this activity to complete it';
+$string['configcompletiondefault'] = 'The default setting for completion tracking when creating new activities.';
 $string['configenablecompletion'] = 'When enabled, this lets you turn on completion tracking (progress) features at course level.';
 $string['confirmselfcompletion'] = 'Confirm self completion';
 $string['courseaggregation'] = 'Condition requires';
@@ -108,12 +110,13 @@ $string['criteriarequiredany'] = 'Any criteria below are required';
 $string['csvdownload'] = 'Download in spreadsheet format (UTF-8 .csv)';
 $string['datepassed'] = 'Date passed';
 $string['days'] = 'Days';
+$string['daysoftotal'] = '{$a->days} of {$a->total}';
 $string['deletecompletiondata'] = 'Delete completion data';
 $string['dependencies'] = 'Dependencies';
 $string['dependenciescompleted'] = 'Completion of other courses';
 $string['editcoursecompletionsettings'] = 'Edit course completion settings';
 $string['enablecompletion'] = 'Enable completion tracking';
-$string['enablecompletion_help'] = 'Once enabled, the completion tracking settings are displayed in the completion tracking page, and in the activity settings.';
+$string['enablecompletion_help'] = 'If enabled, activity completion conditions may be set in the activity settings and/or course completion conditions may be set.';
 $string['enrolmentduration'] = 'Enrolment duration';
 $string['enrolmentdurationlength'] = 'User must remain enrolled for';
 $string['err_noactivities'] = 'Completion information is not enabled for any activity, so none can be displayed. You can enable completion information by editing the settings for an activity.';
@@ -121,7 +124,7 @@ $string['err_nocourses'] = 'Course completion is not enabled for any other cours
 $string['err_nograde'] = 'A course pass grade has not been set for this course. To enable this criteria type you must create a pass grade for this course.';
 $string['err_noroles'] = 'There are no roles with the capability moodle/course:markcomplete in this course.';
 $string['err_nousers'] = 'There are no students on this course or group for whom completion information is displayed. (By default, completion information is displayed only for students, so if there are no students, you will see this error. Administrators can alter this option via the admin screens.)';
-$string['err_settingslocked'] = 'One or more students have already completed a criteria so the settings have been locked. Unlocking the completion criteria settings will delete any existing user data and may cause confusion.';
+$string['err_settingslocked'] = 'One or more students have already completed a criterion so the settings have been locked. Unlocking the completion criteria settings will delete any existing user data and may cause confusion.';
 $string['err_system'] = 'An internal error occurred in the completion system. (System administrators can enable debugging information to see more detail.)';
 $string['eventcoursecompleted'] = 'Course completed';
 $string['eventcoursecompletionupdated'] = 'Course completion updated';
@@ -161,6 +164,7 @@ $string['restoringcompletiondata'] = 'Writing completion data';
 $string['roleaggregation'] = 'Condition requires';
 $string['roleaggregation_all'] = 'ALL selected roles to mark when the condition is met';
 $string['roleaggregation_any'] = 'ANY selected roles to mark when the condition is met';
+$string['roleidnotfound'] = 'Role ID {$a} not found';
 $string['saved'] = 'Saved';
 $string['seedetails'] = 'See details';
 $string['self'] = 'Self';

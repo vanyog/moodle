@@ -326,7 +326,6 @@ function groups_create_grouping($data, $editoroptions=null) {
         'objectid' => $id
     );
     $event = \core\event\grouping_created::create($params);
-    $event->set_legacy_eventdata($data);
     $event->trigger();
 
     return $id;
@@ -345,18 +344,25 @@ function groups_update_group_icon($group, $data, $editform) {
 
     $fs = get_file_storage();
     $context = context_course::instance($group->courseid, MUST_EXIST);
+    $newpicture = $group->picture;
 
-    //TODO: it would make sense to allow picture deleting too (skodak)
-    if ($iconfile = $editform->save_temp_file('imagefile')) {
-        if (process_new_icon($context, 'group', 'icon', $group->id, $iconfile)) {
-            $DB->set_field('groups', 'picture', 1, array('id'=>$group->id));
-            $group->picture = 1;
+    if (!empty($data->deletepicture)) {
+        $fs->delete_area_files($context->id, 'group', 'icon', $group->id);
+        $newpicture = 0;
+    } else if ($iconfile = $editform->save_temp_file('imagefile')) {
+        if ($rev = process_new_icon($context, 'group', 'icon', $group->id, $iconfile)) {
+            $newpicture = $rev;
         } else {
             $fs->delete_area_files($context->id, 'group', 'icon', $group->id);
-            $DB->set_field('groups', 'picture', 0, array('id'=>$group->id));
-            $group->picture = 0;
+            $newpicture = 0;
         }
         @unlink($iconfile);
+    }
+
+    if ($newpicture != $group->picture) {
+        $DB->set_field('groups', 'picture', $newpicture, array('id' => $group->id));
+        $group->picture = $newpicture;
+
         // Invalidate the group data as we've updated the group record.
         cache_helper::invalidate_by_definition('core', 'groupdata', array(), array($group->courseid));
     }
@@ -376,7 +382,9 @@ function groups_update_group($data, $editform = false, $editoroptions = false) {
     $context = context_course::instance($data->courseid);
 
     $data->timemodified = time();
-    $data->name         = trim($data->name);
+    if (isset($data->name)) {
+        $data->name = trim($data->name);
+    }
     if (isset($data->idnumber)) {
         $data->idnumber = trim($data->idnumber);
         if (($existing = groups_get_group_by_idnumber($data->courseid, $data->idnumber)) && $existing->id != $data->id) {
@@ -421,7 +429,9 @@ function groups_update_group($data, $editform = false, $editoroptions = false) {
 function groups_update_grouping($data, $editoroptions=null) {
     global $DB;
     $data->timemodified = time();
-    $data->name         = trim($data->name);
+    if (isset($data->name)) {
+        $data->name = trim($data->name);
+    }
     if (isset($data->idnumber)) {
         $data->idnumber = trim($data->idnumber);
         if (($existing = groups_get_grouping_by_idnumber($data->courseid, $data->idnumber)) && $existing->id != $data->id) {
@@ -442,7 +452,6 @@ function groups_update_grouping($data, $editoroptions=null) {
         'objectid' => $data->id
     );
     $event = \core\event\grouping_updated::create($params);
-    $event->set_legacy_eventdata($data);
     $event->trigger();
 
     return true;
@@ -556,30 +565,30 @@ function groups_delete_grouping($groupingorid) {
  *
  * @param int $courseid
  * @param int $userid 0 means all users
- * @param bool $showfeedback
+ * @param bool $unused - formerly $showfeedback, is no longer used.
  * @return bool success
  */
-function groups_delete_group_members($courseid, $userid=0, $showfeedback=false) {
+function groups_delete_group_members($courseid, $userid=0, $unused=false) {
     global $DB, $OUTPUT;
 
-    if (is_bool($userid)) {
-        debugging('Incorrect userid function parameter');
-        return false;
+    // Get the users in the course which are in a group.
+    $sql = "SELECT gm.id as gmid, gm.userid, g.*
+              FROM {groups_members} gm
+        INNER JOIN {groups} g
+                ON gm.groupid = g.id
+             WHERE g.courseid = :courseid";
+    $params = array();
+    $params['courseid'] = $courseid;
+    // Check if we want to delete a specific user.
+    if ($userid) {
+        $sql .= " AND gm.userid = :userid";
+        $params['userid'] = $userid;
     }
-
-    // Select * so that the function groups_remove_member() gets the whole record.
-    $groups = $DB->get_recordset('groups', array('courseid' => $courseid));
-    foreach ($groups as $group) {
-        if ($userid) {
-            $userids = array($userid);
-        } else {
-            $userids = $DB->get_fieldset_select('groups_members', 'userid', 'groupid = :groupid', array('groupid' => $group->id));
-        }
-
-        foreach ($userids as $id) {
-            groups_remove_member($group, $id);
-        }
+    $rs = $DB->get_recordset_sql($sql, $params);
+    foreach ($rs as $usergroup) {
+        groups_remove_member($usergroup, $usergroup->userid);
     }
+    $rs->close();
 
     // TODO MDL-41312 Remove events_trigger_legacy('groups_members_removed').
     // This event is kept here for backwards compatibility, because it cannot be
@@ -588,10 +597,6 @@ function groups_delete_group_members($courseid, $userid=0, $showfeedback=false) 
     $eventdata->courseid = $courseid;
     $eventdata->userid   = $userid;
     events_trigger_legacy('groups_members_removed', $eventdata);
-
-    if ($showfeedback) {
-        echo $OUTPUT->notification(get_string('deleted').' - '.get_string('groupmembers', 'group'), 'notifysuccess');
-    }
 
     return true;
 }
@@ -709,40 +714,76 @@ function groups_get_possible_roles($context) {
  *
  * @param int $courseid The id of the course
  * @param int $roleid The role to select users from
- * @param int $cohortid restrict to cohort id
+ * @param mixed $source restrict to cohort, grouping or group id
  * @param string $orderby The column to sort users by
+ * @param int $notingroup restrict to users not in existing groups
  * @return array An array of the users
  */
-function groups_get_potential_members($courseid, $roleid = null, $cohortid = null, $orderby = 'lastname ASC, firstname ASC') {
+function groups_get_potential_members($courseid, $roleid = null, $source = null,
+                                      $orderby = 'lastname ASC, firstname ASC',
+                                      $notingroup = null) {
     global $DB;
 
     $context = context_course::instance($courseid);
 
     list($esql, $params) = get_enrolled_sql($context);
 
+    $notingroupsql = "";
+    if ($notingroup) {
+        // We want to eliminate users that are already associated with a course group.
+        $notingroupsql = "u.id NOT IN (SELECT userid
+                                         FROM {groups_members}
+                                        WHERE groupid IN (SELECT id
+                                                            FROM {groups}
+                                                           WHERE courseid = :courseid))";
+        $params['courseid'] = $courseid;
+    }
+
     if ($roleid) {
         // We are looking for all users with this role assigned in this context or higher.
-        list($relatedctxsql, $relatedctxparams) = $DB->get_in_or_equal($context->get_parent_context_ids(true), SQL_PARAMS_NAMED, 'relatedctx');
+        list($relatedctxsql, $relatedctxparams) = $DB->get_in_or_equal($context->get_parent_context_ids(true),
+                                                                       SQL_PARAMS_NAMED,
+                                                                       'relatedctx');
 
         $params = array_merge($params, $relatedctxparams, array('roleid' => $roleid));
         $where = "WHERE u.id IN (SELECT userid
                                    FROM {role_assignments}
                                   WHERE roleid = :roleid AND contextid $relatedctxsql)";
+        $where .= $notingroup ? "AND $notingroupsql" : "";
+    } else if ($notingroup) {
+        $where = "WHERE $notingroupsql";
     } else {
         $where = "";
     }
 
-    if ($cohortid) {
-        $cohortjoin = "JOIN {cohort_members} cm ON (cm.userid = u.id AND cm.cohortid = :cohortid)";
-        $params['cohortid'] = $cohortid;
+    $sourcejoin = "";
+    if (is_int($source)) {
+        $sourcejoin .= "JOIN {cohort_members} cm ON (cm.userid = u.id AND cm.cohortid = :cohortid) ";
+        $params['cohortid'] = $source;
     } else {
-        $cohortjoin = "";
+        // Auto-create groups from an existing cohort membership.
+        if (isset($source['cohortid'])) {
+            $sourcejoin .= "JOIN {cohort_members} cm ON (cm.userid = u.id AND cm.cohortid = :cohortid) ";
+            $params['cohortid'] = $source['cohortid'];
+        }
+        // Auto-create groups from an existing group membership.
+        if (isset($source['groupid'])) {
+            $sourcejoin .= "JOIN {groups_members} gp ON (gp.userid = u.id AND gp.groupid = :groupid) ";
+            $params['groupid'] = $source['groupid'];
+        }
+        // Auto-create groups from an existing grouping membership.
+        if (isset($source['groupingid'])) {
+            $sourcejoin .= "JOIN {groupings_groups} gg ON gg.groupingid = :groupingid ";
+            $sourcejoin .= "JOIN {groups_members} gm ON (gm.userid = u.id AND gm.groupid = gg.groupid) ";
+            $params['groupingid'] = $source['groupingid'];
+        }
     }
 
-    $sql = "SELECT u.id, u.username, u.firstname, u.lastname, u.idnumber
+    $allusernamefields = get_all_user_name_fields(true, 'u');
+    $sql = "SELECT DISTINCT u.id, u.username, $allusernamefields, u.idnumber
               FROM {user} u
               JOIN ($esql) e ON e.id = u.id
-       $cohortjoin
+       $sourcejoin
             $where
           ORDER BY $orderby";
 
@@ -975,4 +1016,64 @@ function groups_calculate_role_people($rs, $context) {
 
     // Return list of roles containing their users
     return $roles;
+}
+
+/**
+ * Synchronises enrolments with the group membership
+ *
+ * Designed for enrolment methods provide automatic synchronisation between enrolled users
+ * and group membership, such as enrol_cohort and enrol_meta .
+ *
+ * @param string $enrolname name of enrolment method without prefix
+ * @param int $courseid course id where sync needs to be performed (0 for all courses)
+ * @param string $gidfield name of the field in 'enrol' table that stores group id
+ * @return array Returns the list of removed and added users. Each record contains fields:
+ *                  userid, enrolid, courseid, groupid, groupname
+ */
+function groups_sync_with_enrolment($enrolname, $courseid = 0, $gidfield = 'customint2') {
+    global $DB;
+    $onecourse = $courseid ? "AND e.courseid = :courseid" : "";
+    $params = array(
+        'enrolname' => $enrolname,
+        'component' => 'enrol_'.$enrolname,
+        'courseid' => $courseid
+    );
+
+    $affectedusers = array(
+        'removed' => array(),
+        'added' => array()
+    );
+
+    // Remove invalid.
+    $sql = "SELECT ue.userid, ue.enrolid, e.courseid, g.id AS groupid, g.name AS groupname
+              FROM {groups_members} gm
+              JOIN {groups} g ON (g.id = gm.groupid)
+              JOIN {enrol} e ON (e.enrol = :enrolname AND e.courseid = g.courseid $onecourse)
+              JOIN {user_enrolments} ue ON (ue.userid = gm.userid AND ue.enrolid = e.id)
+             WHERE gm.component=:component AND gm.itemid = e.id AND g.id <> e.{$gidfield}";
+
+    $rs = $DB->get_recordset_sql($sql, $params);
+    foreach ($rs as $gm) {
+        groups_remove_member($gm->groupid, $gm->userid);
+        $affectedusers['removed'][] = $gm;
+    }
+    $rs->close();
+
+    // Add missing.
+    $sql = "SELECT ue.userid, ue.enrolid, e.courseid, g.id AS groupid, g.name AS groupname
+              FROM {user_enrolments} ue
+              JOIN {enrol} e ON (e.id = ue.enrolid AND e.enrol = :enrolname $onecourse)
+              JOIN {groups} g ON (g.courseid = e.courseid AND g.id = e.{$gidfield})
+              JOIN {user} u ON (u.id = ue.userid AND u.deleted = 0)
+         LEFT JOIN {groups_members} gm ON (gm.groupid = g.id AND gm.userid = ue.userid)
+             WHERE gm.id IS NULL";
+
+    $rs = $DB->get_recordset_sql($sql, $params);
+    foreach ($rs as $ue) {
+        groups_add_member($ue->groupid, $ue->userid, 'enrol_'.$enrolname, $ue->enrolid);
+        $affectedusers['added'][] = $ue;
+    }
+    $rs->close();
+
+    return $affectedusers;
 }

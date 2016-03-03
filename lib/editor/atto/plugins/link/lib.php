@@ -28,31 +28,14 @@ defined('MOODLE_INTERNAL') || die();
  * Initialise this plugin
  * @param string $elementid
  */
-function atto_link_init_editor($elementid) {
-    global $PAGE, $OUTPUT;
-
-    $icon = $OUTPUT->pix_icon('link',
-                              get_string('link', 'atto_link'),
-                              'atto_link',
-                              array('class'=>'icon'));
+function atto_link_strings_for_js() {
+    global $PAGE;
 
     $PAGE->requires->strings_for_js(array('createlink',
+                                          'unlink',
                                           'enterurl',
                                           'browserepositories',
-                                          'accessibilityhint'),
+                                          'openinnewwindow'),
                                     'atto_link');
-
-    $PAGE->requires->yui_module('moodle-atto_link-button',
-                                'M.atto_link.init',
-                                array(array('elementid'=>$elementid, 'icon'=>$icon)),
-                                true);
-
 }
 
-/**
- * Return the order this plugin should be displayed in the toolbar
- * @return int
- */
-function atto_link_sort_order() {
-    return 11;
-}

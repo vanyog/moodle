@@ -18,9 +18,9 @@
 /**
  * This contains functions and classes that will be used by scripts in wiki module
  *
- * @package mod-wiki-2.0
- * @copyrigth 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
- * @copyrigth 2009 Universitat Politecnica de Catalunya http://www.upc.edu
+ * @package mod_wiki
+ * @copyright 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
+ * @copyright 2009 Universitat Politecnica de Catalunya http://www.upc.edu
  *
  * @author Jordi Piguillem
  * @author Marc Alier
@@ -247,12 +247,24 @@ function wiki_save_page($wikipage, $newcontent, $userid) {
         $version->userid = $userid;
         $version->version++;
         $version->timecreated = time();
-        $versionid = $DB->insert_record('wiki_versions', $version);
+        $version->id = $DB->insert_record('wiki_versions', $version);
 
         $wikipage->timemodified = $version->timecreated;
         $wikipage->userid = $userid;
         $return = wiki_refresh_cachedcontent($wikipage, $newcontent);
-
+        $event = \mod_wiki\event\page_updated::create(
+                array(
+                    'context' => $context,
+                    'objectid' => $wikipage->id,
+                    'relateduserid' => $userid,
+                    'other' => array(
+                        'newcontent' => $newcontent
+                        )
+                    ));
+        $event->add_record_snapshot('wiki', $wiki);
+        $event->add_record_snapshot('wiki_pages', $wikipage);
+        $event->add_record_snapshot('wiki_versions', $version);
+        $event->trigger();
         return $return;
     } else {
         return false;
@@ -280,11 +292,27 @@ function wiki_refresh_cachedcontent($page, $newcontent = null) {
 
     return array('page' => $page, 'sections' => $parseroutput['repeated_sections'], 'version' => $version->version);
 }
+
 /**
- * Restore a page
+ * Restore a page with specified version.
+ *
+ * @param stdClass $wikipage wiki page record
+ * @param stdClass $version wiki page version to restore
+ * @param context_module $context context of wiki module
+ * @return stdClass restored page
  */
-function wiki_restore_page($wikipage, $newcontent, $userid) {
-    $return = wiki_save_page($wikipage, $newcontent, $userid);
+function wiki_restore_page($wikipage, $version, $context) {
+    $return = wiki_save_page($wikipage, $version->content, $version->userid);
+    $event = \mod_wiki\event\page_version_restored::create(
+            array(
+                'context' => $context,
+                'objectid' => $version->id,
+                'other' => array(
+                    'pageid' => $wikipage->id
+                    )
+                ));
+    $event->add_record_snapshot('wiki_versions', $version);
+    $event->trigger();
     return $return['page'];
 }
 
@@ -360,6 +388,14 @@ function wiki_create_page($swid, $title, $format, $userid) {
     $version->id = $versionid;
     $version->pageid = $pageid;
     $DB->update_record('wiki_versions', $version);
+
+    $event = \mod_wiki\event\page_created::create(
+            array(
+                'context' => $context,
+                'objectid' => $pageid
+                )
+            );
+    $event->trigger();
 
     wiki_make_cache_expire($page->title);
     return $pageid;
@@ -719,13 +755,27 @@ function wiki_parser_get_token($markup, $name) {
 /**
  * Checks if current user can view a subwiki
  *
- * @param $subwiki
+ * @param stdClass $subwiki usually record from {wiki_subwikis}. Must contain fields 'wikiid', 'groupid', 'userid'.
+ *     If it also contains fields 'course' and 'groupmode' from table {wiki} it will save extra DB query.
+ * @param stdClass $wiki optional wiki object if known
+ * @return bool
  */
-function wiki_user_can_view($subwiki) {
+function wiki_user_can_view($subwiki, $wiki = null) {
     global $USER;
 
-    $wiki = wiki_get_wiki($subwiki->wikiid);
-    $cm = get_coursemodule_from_instance('wiki', $wiki->id);
+    if (empty($wiki) || $wiki->id != $subwiki->wikiid) {
+        $wiki = wiki_get_wiki($subwiki->wikiid);
+    }
+    $modinfo = get_fast_modinfo($wiki->course);
+    if (!isset($modinfo->instances['wiki'][$subwiki->wikiid])) {
+        // Module does not exist.
+        return false;
+    }
+    $cm = $modinfo->instances['wiki'][$subwiki->wikiid];
+    if (!$cm->uservisible) {
+        // The whole module is not visible to the current user.
+        return false;
+    }
     $context = context_module::instance($cm->id);
 
     // Working depending on activity groupmode
@@ -767,7 +817,7 @@ function wiki_user_can_view($subwiki) {
         //      Each person owns a wiki.
         if ($wiki->wikimode == 'collaborative' || $wiki->wikimode == 'individual') {
             // Only members of subwiki group could view that wiki
-            if (groups_is_member($subwiki->groupid)) {
+            if (in_array($subwiki->groupid, $modinfo->get_groups($cm->groupingid))) {
                 // Only view capability needed
                 return has_capability('mod/wiki:viewpage', $context);
 
@@ -858,7 +908,7 @@ function wiki_user_can_edit($subwiki) {
             // There is one wiki per group.
             //
             // Only members of subwiki group could edit that wiki
-            if ($subwiki->groupid == groups_get_activity_group($cm)) {
+            if (groups_is_member($subwiki->groupid)) {
                 // Only edit capability needed
                 return has_capability('mod/wiki:editpage', $context);
             } else { // User is not part of that group
@@ -987,9 +1037,19 @@ function wiki_set_lock($pageid, $userid, $section = null, $insert = false) {
 
 /**
  * Deletes wiki_locks that are not in use. (F.Ex. after submitting the changes). If no userid is present, it deletes ALL the wiki_locks of a specific page.
+ *
+ * @param int $pageid page id.
+ * @param int $userid id of user for which lock is deleted.
+ * @param string $section section to be deleted.
+ * @param bool $delete_from_db deleted from db.
+ * @param bool $delete_section_and_page delete section and page version.
  */
 function wiki_delete_locks($pageid, $userid = null, $section = null, $delete_from_db = true, $delete_section_and_page = false) {
     global $DB;
+
+    $wiki = wiki_get_wiki_from_pageid($pageid);
+    $cm = get_coursemodule_from_instance('wiki', $wiki->id);
+    $context = context_module::instance($cm->id);
 
     $params = array('pageid' => $pageid);
 
@@ -1007,6 +1067,17 @@ function wiki_delete_locks($pageid, $userid = null, $section = null, $delete_fro
             $params['sectionname'] = null;
             $DB->delete_records('wiki_locks', $params);
         }
+        $event = \mod_wiki\event\page_locks_deleted::create(
+        array(
+            'context' => $context,
+            'objectid' => $pageid,
+            'relateduserid' => $userid,
+            'other' => array(
+                'section' => $section
+                )
+            ));
+        // No need to add snapshot, as important data is section, userid and pageid, which is part of event.
+        $event->trigger();
     } else {
         $DB->set_field('wiki_locks', 'lockedat', time(), $params);
     }
@@ -1079,7 +1150,7 @@ function wiki_delete_synonym($subwikiid, $pageid = null) {
  * @param int $subwikiid id of the subwiki for which all pages should be deleted
  */
 function wiki_delete_pages($context, $pageids = null, $subwikiid = null) {
-    global $DB;
+    global $DB, $CFG;
 
     if (!empty($pageids) && is_int($pageids)) {
        $pageids = array($pageids);
@@ -1105,16 +1176,13 @@ function wiki_delete_pages($context, $pageids = null, $subwikiid = null) {
         }
 
         //Delete page tags
-        $tags = tag_get_tags_array('wiki_pages', $pageid);
-        foreach ($tags as $tagid => $tagvalue) {
-            tag_delete_instance('wiki_pages', $pageid, $tagid);
-        }
+        core_tag_tag::remove_all_item_tags('mod_wiki', 'wiki_pages', $pageid);
 
         //Delete Synonym
         wiki_delete_synonym($subwikiid, $pageid);
 
         //Delete all page versions
-        wiki_delete_page_versions(array($pageid=>array(0)));
+        wiki_delete_page_versions(array($pageid=>array(0)), $context);
 
         //Delete all page locks
         wiki_delete_locks($pageid);
@@ -1122,9 +1190,23 @@ function wiki_delete_pages($context, $pageids = null, $subwikiid = null) {
         //Delete all page links
         wiki_delete_links(null, $pageid);
 
-        //Delete page
         $params = array('id' => $pageid);
+
+        // Get page before deleting.
+        $page = $DB->get_record('wiki_pages', $params);
+
+        //Delete page
         $DB->delete_records('wiki_pages', $params);
+
+        // Trigger page_deleted event.
+        $event = \mod_wiki\event\page_deleted::create(
+                array(
+                    'context' => $context,
+                    'objectid' => $pageid,
+                    'other' => array('subwikiid' => $subwikiid)
+                    ));
+        $event->add_record_snapshot('wiki_pages', $page);
+        $event->trigger();
     }
 }
 
@@ -1133,20 +1215,42 @@ function wiki_delete_pages($context, $pageids = null, $subwikiid = null) {
  * if version is 0 then it will remove all versions of the page
  *
  * @param array $deleteversions delete versions for a page
+ * @param context_module $context module context
  */
-function wiki_delete_page_versions($deleteversions) {
+function wiki_delete_page_versions($deleteversions, $context = null) {
     global $DB;
 
     /// delete page-versions
     foreach ($deleteversions as $id => $versions) {
-        foreach ($versions as $version) {
-            $params = array('pageid' => $id);
-            //If version = 0, then remove all versions of this page, else remove
-            //specified version
-            if ($version != 0) {
-                $params['version'] = $version;
-            }
+        $params = array('pageid' => $id);
+        if (is_null($context)) {
+            $wiki = wiki_get_wiki_from_pageid($id);
+            $cm = get_coursemodule_from_instance('wiki', $wiki->id);
+            $context = context_module::instance($cm->id);
+        }
+        // Delete all versions, if version specified is 0.
+        if (in_array(0, $versions)) {
+            $oldversions = $DB->get_records('wiki_versions', $params);
             $DB->delete_records('wiki_versions', $params, IGNORE_MISSING);
+        } else {
+            list($insql, $param) = $DB->get_in_or_equal($versions);
+            $insql .= ' AND pageid = ?';
+            array_push($param, $params['pageid']);
+            $oldversions = $DB->get_recordset_select('wiki_versions', 'version ' . $insql, $param);
+            $DB->delete_records_select('wiki_versions', 'version ' . $insql, $param);
+        }
+        foreach ($oldversions as $version) {
+            // Trigger page version deleted event.
+            $event = \mod_wiki\event\page_version_deleted::create(
+                    array(
+                        'context' => $context,
+                        'objectid' => $version->id,
+                        'other' => array(
+                            'pageid' => $id
+                        )
+                    ));
+            $event->add_record_snapshot('wiki_versions', $version);
+            $event->trigger();
         }
     }
 }
@@ -1159,8 +1263,8 @@ function wiki_get_comment($commentid){
 /**
  * Returns all comments by context and pageid
  *
- * @param $context. Current context
- * @param $pageid. Current pageid
+ * @param int $contextid Current context id
+ * @param int $pageid Current pageid
  **/
 function wiki_get_comments($contextid, $pageid) {
     global $DB;
@@ -1277,18 +1381,8 @@ function wiki_print_page_content($page, $context, $subwikiid) {
     $html = format_text($html, FORMAT_MOODLE, array('overflowdiv'=>true, 'allowid'=>true));
     echo $OUTPUT->box($html);
 
-    if (!empty($CFG->usetags)) {
-        $tags = tag_get_tags_array('wiki_pages', $page->id);
-        echo $OUTPUT->container_start('wiki-tags');
-        echo '<span class="wiki-tags-title">'.get_string('tags').': </span>';
-        $links = array();
-        foreach ($tags as $tagid=>$tag) {
-            $url = new moodle_url('/tag/index.php', array('tag'=>$tag));
-            $links[] = html_writer::link($url, $tag, array('title'=>get_string('tagtitle', 'wiki', $tag)));
-        }
-        echo join($links, ", ");
-        echo $OUTPUT->container_end();
-    }
+    echo $OUTPUT->tag_list(core_tag_tag::get_item_tags('mod_wiki', 'wiki_pages', $page->id),
+            null, 'wiki-tags');
 
     wiki_increment_pageviews($page);
 }
@@ -1404,8 +1498,11 @@ function wiki_print_upload_table($context, $filearea, $fileitemid, $deleteupload
  */
 function wiki_build_tree($page, $node, &$keys) {
     $content = array();
-    static $icon;
-    $icon = new pix_icon('f/odt', '');
+    static $icon = null;
+    if ($icon === null) {
+        // Substitute the default navigation icon with empty image.
+        $icon = new pix_icon('spacer', '');
+    }
     $pages = wiki_get_linked_pages($page->id);
     foreach ($pages as $p) {
         $key = $page->id . ':' . $p->id;
@@ -1453,4 +1550,15 @@ function wiki_get_updated_pages_by_subwiki($swid) {
             WHERE subwikiid = ? AND timemodified > ?
             ORDER BY timemodified DESC";
     return $DB->get_records_sql($sql, array($swid, $USER->lastlogin));
+}
+
+/**
+ * Check if the user can create pages in a certain wiki.
+ * @param context $context Wiki's context.
+ * @param integer|stdClass $user A user id or object. By default (null) checks the permissions of the current user.
+ * @return bool True if user can create pages, false otherwise.
+ * @since Moodle 3.1
+ */
+function wiki_can_create_pages($context, $user = null) {
+    return has_capability('mod/wiki:createpage', $context, $user);
 }

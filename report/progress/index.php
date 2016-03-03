@@ -47,8 +47,8 @@ $csv = $format == 'csv' || $excel;
 
 // Paging
 $start   = optional_param('start', 0, PARAM_INT);
-$sifirst = optional_param('sifirst', 'all', PARAM_ALPHA);
-$silast  = optional_param('silast', 'all', PARAM_ALPHA);
+$sifirst = optional_param('sifirst', 'all', PARAM_NOTAGS);
+$silast  = optional_param('silast', 'all', PARAM_NOTAGS);
 $start   = optional_param('start', 0, PARAM_INT);
 
 // Whether to show extra user identity information
@@ -305,9 +305,10 @@ if (!$csv) {
 }
 
 // Activities
+$formattedactivities = array();
 foreach($activities as $activity) {
-    $activity->datepassed = $activity->completionexpected && $activity->completionexpected <= time();
-    $activity->datepassedclass=$activity->datepassed ? 'completion-expired' : '';
+    $datepassed = $activity->completionexpected && $activity->completionexpected <= time();
+    $datepassedclass = $datepassed ? 'completion-expired' : '';
 
     if ($activity->completionexpected) {
         $datetext=userdate($activity->completionexpected,get_string('strftimedate','langconfig'));
@@ -316,23 +317,28 @@ foreach($activities as $activity) {
     }
 
     // Some names (labels) come URL-encoded and can be very long, so shorten them
-    $activity->name = shorten_text($activity->name);
+    $displayname = format_string($activity->name, true, array('context' => $activity->context));
 
     if ($csv) {
-        print $sep.csv_quote(strip_tags($activity->name)).$sep.csv_quote($datetext);
+        print $sep.csv_quote($displayname).$sep.csv_quote($datetext);
     } else {
-        $formattedactivityname = format_string($activity->name, true, array('context' => $context));
-        print '<th scope="col" class="'.$activity->datepassedclass.'">'.
+        $shortenedname = shorten_text($displayname);
+        print '<th scope="col" class="'.$datepassedclass.'">'.
             '<a href="'.$CFG->wwwroot.'/mod/'.$activity->modname.
-            '/view.php?id='.$activity->id.'" title="' . $formattedactivityname . '">'.
+            '/view.php?id='.$activity->id.'" title="' . s($displayname) . '">'.
             '<img src="'.$OUTPUT->pix_url('icon', $activity->modname).'" alt="'.
-            get_string('modulename',$activity->modname).'" /> <span class="completion-activityname">'.
-            $formattedactivityname.'</span></a>';
+            s(get_string('modulename', $activity->modname)).
+                '" /> <span class="completion-activityname">'.
+            $shortenedname.'</span></a>';
         if ($activity->completionexpected) {
             print '<div class="completion-expected"><span>'.$datetext.'</span></div>';
         }
         print '</th>';
     }
+    $formattedactivities[$activity->id] = (object)array(
+        'datepassedclass' => $datepassedclass,
+        'displayname' => $displayname,
+    );
 }
 
 if ($csv) {
@@ -382,21 +388,20 @@ foreach($progress as $user) {
             ($activity->completion==COMPLETION_TRACKING_AUTOMATIC ? 'auto' : 'manual').
             '-'.$completiontype;
 
-        $modcontext = context_module::instance($activity->id);
         $describe = get_string('completion-' . $completiontype, 'completion');
         $a=new StdClass;
         $a->state=$describe;
         $a->date=$date;
         $a->user=fullname($user);
-        $a->activity = format_string($activity->name, true, array('context' => $modcontext));
+        $a->activity = $formattedactivities[$activity->id]->displayname;
         $fulldescribe=get_string('progress-title','completion',$a);
 
         if ($csv) {
             print $sep.csv_quote($describe).$sep.csv_quote($date);
         } else {
-            print '<td class="completion-progresscell '.$activity->datepassedclass.'">'.
+            print '<td class="completion-progresscell '.$formattedactivities[$activity->id]->datepassedclass.'">'.
                 '<img src="'.$OUTPUT->pix_url('i/'.$completionicon).
-                '" alt="'.$describe.'" title="'.$fulldescribe.'" /></td>';
+                '" alt="'.s($describe).'" title="'.s($fulldescribe).'" /></td>';
         }
     }
 

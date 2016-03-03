@@ -1,4 +1,26 @@
 <?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Glossary Random block.
+ *
+ * @package   block_glossary_random
+ * @copyright 1999 onwards Martin Dougiamas  {@link http://moodle.com}
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
 
 define('BGR_RANDOMLY',     '0');
 define('BGR_LASTMODIFIED', '1');
@@ -62,14 +84,13 @@ class block_glossary_random extends block_base {
             $limitfrom = 0;
             $limitnum = 1;
 
-            $BROWSE = 'timemodified';
+            $orderby = 'timemodified ASC';
 
             switch ($this->config->type) {
 
                 case BGR_RANDOMLY:
                     $i = rand(1,$numberofentries);
                     $limitfrom = $i-1;
-                    $SORT = 'ASC';
                     break;
 
                 case BGR_NEXTONE:
@@ -82,11 +103,10 @@ class block_glossary_random extends block_base {
                         $i = 1;
                     }
                     $limitfrom = $i-1;
-                    $SORT = 'ASC';
                     break;
 
                 case BGR_NEXTALPHA:
-                    $BROWSE = 'concept';
+                    $orderby = 'concept ASC';
                     if (isset($this->config->previous)) {
                         $i = $this->config->previous + 1;
                     } else {
@@ -96,20 +116,19 @@ class block_glossary_random extends block_base {
                         $i = 1;
                     }
                     $limitfrom = $i-1;
-                    $SORT = 'ASC';
                     break;
 
                 default:  // BGR_LASTMODIFIED
                     $i = $numberofentries;
                     $limitfrom = 0;
-                    $SORT = 'DESC';
+                    $orderby = 'timemodified DESC, id DESC';
                     break;
             }
 
             if ($entry = $DB->get_records_sql("SELECT id, concept, definition, definitionformat, definitiontrust
                                                  FROM {glossary_entries}
                                                 WHERE glossaryid = ? AND approved = 1
-                                             ORDER BY $BROWSE $SORT", array($this->config->glossary), $limitfrom, $limitnum)) {
+                                             ORDER BY $orderby", array($this->config->glossary), $limitfrom, $limitnum)) {
 
                 $entry = reset($entry);
 
@@ -148,7 +167,11 @@ class block_glossary_random extends block_base {
 
         if (empty($this->config->glossary)) {
             $this->content = new stdClass();
-            $this->content->text   = get_string('notyetconfigured','block_glossary_random');
+            if ($this->user_can_edit()) {
+                $this->content->text = get_string('notyetconfigured','block_glossary_random');
+            } else {
+                $this->content->text = '';
+            }
             $this->content->footer = '';
             return $this->content;
         }
@@ -175,7 +198,11 @@ class block_glossary_random extends block_base {
             $this->instance_config_commit();
 
             $this->content = new stdClass();
-            $this->content->text   = get_string('notyetconfigured','block_glossary_random');
+            if ($this->user_can_edit()) {
+                $this->content->text = get_string('notyetconfigured','block_glossary_random');
+            } else {
+                $this->content->text = '';
+            }
             $this->content->footer = '';
             return $this->content;
         }
@@ -214,13 +241,6 @@ class block_glossary_random extends block_base {
         }
 
         return $this->content;
-    }
-
-    function hide_header() {
-        if (empty($this->config->title)) {
-            return true;
-        }
-        return false;
     }
 }
 

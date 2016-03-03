@@ -39,11 +39,21 @@ class auth_plugin_cas extends auth_plugin_ldap {
     /**
      * Constructor.
      */
-    function auth_plugin_cas() {
+    public function __construct() {
         $this->authtype = 'cas';
         $this->roleauth = 'auth_cas';
         $this->errorlogtag = '[AUTH CAS] ';
         $this->init_plugin($this->authtype);
+    }
+
+    /**
+     * Old syntax of class constructor. Deprecated in PHP7.
+     *
+     * @deprecated since Moodle 3.1
+     */
+    public function auth_plugin_cas() {
+        debugging('Use of class name as constructor is deprecated', DEBUG_DEVELOPER);
+        self::__construct();
     }
 
     function prevent_local_passwords() {
@@ -96,6 +106,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
         $site = get_site();
         $CASform = get_string('CASform', 'auth_cas');
         $username = optional_param('username', '', PARAM_RAW);
+        $courseid = optional_param('courseid', 0, PARAM_INT);
 
         if (!empty($username)) {
             if (isset($SESSION->wantsurl) && (strstr($SESSION->wantsurl, 'ticket') ||
@@ -110,34 +121,22 @@ class auth_plugin_cas extends auth_plugin_ldap {
             return;
         }
 
-        // Connection to CAS server
-        $this->connectCAS();
-
-        if (phpCAS::checkAuthentication()) {
-            $frm = new stdClass();
-            $frm->username = phpCAS::getUser();
-            $frm->password = 'passwdCas';
-            return;
-        }
-
-        if (isset($_GET['loginguest']) && ($_GET['loginguest'] == true)) {
-            $frm = new stdClass();
-            $frm->username = 'guest';
-            $frm->password = 'guest';
-            return;
-        }
-
+        // If the multi-authentication setting is used, check for the param before connecting to CAS.
         if ($this->config->multiauth) {
+
+            // If there is an authentication error, stay on the default authentication page.
+            if (!empty($SESSION->loginerrormsg)) {
+                return;
+            }
+
             $authCAS = optional_param('authCAS', '', PARAM_RAW);
             if ($authCAS == 'NOCAS') {
                 return;
             }
-
-            // Show authentication form for multi-authentication
-            // test pgtIou parameter for proxy mode (https connection
-            // in background from CAS server to the php server)
+            // Show authentication form for multi-authentication.
+            // Test pgtIou parameter for proxy mode (https connection in background from CAS server to the php server).
             if ($authCAS != 'CAS' && !isset($_GET['pgtIou'])) {
-                $PAGE->set_url('/auth/cas/auth.php');
+                $PAGE->set_url('/login/index.php');
                 $PAGE->navbar->add($CASform);
                 $PAGE->set_title("$site->fullname: $CASform");
                 $PAGE->set_heading($site->fullname);
@@ -148,6 +147,29 @@ class auth_plugin_cas extends auth_plugin_ldap {
             }
         }
 
+        // Connection to CAS server
+        $this->connectCAS();
+
+        if (phpCAS::checkAuthentication()) {
+            $frm = new stdClass();
+            $frm->username = phpCAS::getUser();
+            $frm->password = 'passwdCas';
+
+            // Redirect to a course if multi-auth is activated, authCAS is set to CAS and the courseid is specified.
+            if ($this->config->multiauth && !empty($courseid)) {
+                redirect(new moodle_url('/course/view.php', array('id'=>$courseid)));
+            }
+
+            return;
+        }
+
+        if (isset($_GET['loginguest']) && ($_GET['loginguest'] == true)) {
+            $frm = new stdClass();
+            $frm->username = 'guest';
+            $frm->password = 'guest';
+            return;
+        }
+
         // Force CAS authentication (if needed).
         if (!phpCAS::isAuthenticated()) {
             phpCAS::setLang($this->config->language);
@@ -155,38 +177,32 @@ class auth_plugin_cas extends auth_plugin_ldap {
         }
     }
 
-    /**
-     * Logout from the CAS
-     *
-     */
-    function prelogout_hook() {
-        global $CFG;
-
-        if (!empty($this->config->logoutcas)) {
-            $backurl = $CFG->wwwroot;
-            $this->connectCAS();
-            phpCAS::logoutWithURL($backurl);
-        }
-    }
 
     /**
      * Connect to the CAS (clientcas connection or proxycas connection)
      *
      */
     function connectCAS() {
-        global $CFG, $PHPCAS_CLIENT;
+        global $CFG;
+        static $connected = false;
 
-        if (!is_object($PHPCAS_CLIENT)) {
+        if (!$connected) {
             // Make sure phpCAS doesn't try to start a new PHP session when connecting to the CAS server.
             if ($this->config->proxycas) {
                 phpCAS::proxy($this->config->casversion, $this->config->hostname, (int) $this->config->port, $this->config->baseuri, false);
             } else {
                 phpCAS::client($this->config->casversion, $this->config->hostname, (int) $this->config->port, $this->config->baseuri, false);
             }
+            // Some CAS installs require SSLv3 that should be explicitly set.
+            if (!empty($this->config->curl_ssl_version)) {
+                phpCAS::setExtraCurlOption(CURLOPT_SSLVERSION, $this->config->curl_ssl_version);
+            }
+
+            $connected = true;
         }
 
         // If Moodle is configured to use a proxy, phpCAS needs some curl options set.
-        if (!empty($CFG->proxyhost) && !is_proxybypass($this->config->hostname)) {
+        if (!empty($CFG->proxyhost) && !is_proxybypass(phpCAS::getServerLoginURL())) {
             phpCAS::setExtraCurlOption(CURLOPT_PROXY, $CFG->proxyhost);
             if (!empty($CFG->proxyport)) {
                 phpCAS::setExtraCurlOption(CURLOPT_PROXYPORT, $CFG->proxyport);
@@ -206,9 +222,9 @@ class auth_plugin_cas extends auth_plugin_ldap {
             }
         }
 
-        if($this->config->certificate_check && $this->config->certificate_path){
+        if ($this->config->certificate_check && $this->config->certificate_path){
             phpCAS::setCasServerCACert($this->config->certificate_path);
-        }else{
+        } else {
             // Don't try to validate the server SSL credentials
             phpCAS::setNoCasServerValidation();
         }
@@ -235,7 +251,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
                 define ('LDAP_DEREF_NEVER', 0);
             }
             if (!defined('LDAP_DEREF_ALWAYS')) {
-            define ('LDAP_DEREF_ALWAYS', 3);
+                define ('LDAP_DEREF_ALWAYS', 3);
             }
         }
 
@@ -300,6 +316,9 @@ class auth_plugin_cas extends auth_plugin_ldap {
         }
         if (!isset($config->certificate_path)) {
             $config->certificate_path = '';
+        }
+        if (!isset($config->curl_ssl_version)) {
+            $config->curl_ssl_version = '';
         }
         if (!isset($config->logout_return_url)) {
             $config->logout_return_url = '';
@@ -373,6 +392,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
         set_config('multiauth', $config->multiauth, $this->pluginconfig);
         set_config('certificate_check', $config->certificate_check, $this->pluginconfig);
         set_config('certificate_path', $config->certificate_path, $this->pluginconfig);
+        set_config('curl_ssl_version', $config->curl_ssl_version, $this->pluginconfig);
         set_config('logout_return_url', $config->logout_return_url, $this->pluginconfig);
 
         // save LDAP settings
@@ -413,6 +433,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
 
         // Test for group creator
         if (!empty($this->config->groupecreators)) {
+            $ldapconnection = $this->ldap_connect();
             if ($this->config->memberattribute_isdn) {
                 if(!($userid = $this->ldap_find_userdn($ldapconnection, $extusername))) {
                     return false;
@@ -490,6 +511,7 @@ class auth_plugin_cas extends auth_plugin_ldap {
     */
     function logoutpage_hook() {
         global $USER, $redirect;
+
         // Only do this if the user is actually logged in via CAS
         if ($USER->auth === $this->authtype) {
             // Check if there is an alternative logout return url defined
@@ -497,6 +519,24 @@ class auth_plugin_cas extends auth_plugin_ldap {
                 // Set redirect to alternative return url
                 $redirect = $this->config->logout_return_url;
             }
+        }
+    }
+
+    /**
+     * Post logout hook.
+     *
+     * Note: this method replace the prelogout_hook method to avoid redirect to CAS logout
+     * before the event userlogout being triggered.
+     *
+     * @param stdClass $user clone of USER object object before the user session was terminated
+     */
+    public function postlogout_hook($user) {
+        global $CFG;
+        // Only redirect to CAS logout if the user is logged as a CAS user.
+        if (!empty($this->config->logoutcas) && $user->auth == $this->authtype) {
+            $backurl = !empty($this->config->logout_return_url) ? $this->config->logout_return_url : $CFG->wwwroot;
+            $this->connectCAS();
+            phpCAS::logoutWithRedirectService($backurl);
         }
     }
 }

@@ -37,6 +37,10 @@ class tool_generator_course_backend extends tool_generator_backend {
      */
     private static $paramsections = array(1, 10, 100, 500, 1000, 2000);
     /**
+     * @var array Number of assignments in course
+     */
+    private static $paramassignments = array(1, 10, 100, 500, 1000, 2000);
+    /**
      * @var array Number of Page activities in course
      */
     private static $parampages = array(1, 50, 200, 1000, 5000, 10000);
@@ -80,6 +84,21 @@ class tool_generator_course_backend extends tool_generator_backend {
     private $shortname;
 
     /**
+     * @var string Course fullname.
+     */
+    private $fullname = "";
+
+    /**
+     * @var string Course summary.
+     */
+    private $summary = "";
+
+    /**
+     * @var string Course summary format, defaults to FORMAT_HTML.
+     */
+    private $summaryformat = FORMAT_HTML;
+
+    /**
      * @var testing_data_generator Data generator
      */
     protected $generator;
@@ -100,15 +119,51 @@ class tool_generator_course_backend extends tool_generator_backend {
      * @param string $shortname Course shortname
      * @param int $size Size as numeric index
      * @param bool $fixeddataset To use fixed or random data
+     * @param int|bool $filesizelimit The max number of bytes for a generated file
      * @param bool $progress True if progress information should be displayed
-     * @return int Course id
      */
-    public function __construct($shortname, $size, $fixeddataset = false, $progress = true) {
+    public function __construct(
+        $shortname,
+        $size,
+        $fixeddataset = false,
+        $filesizelimit = false,
+        $progress = true,
+        $fullname = null,
+        $summary = null,
+        $summaryformat = FORMAT_HTML) {
 
         // Set parameters.
         $this->shortname = $shortname;
 
-        parent::__construct($size, $fixeddataset, $progress);
+        // We can't allow fullname to be set to an empty string.
+        if (empty($fullname)) {
+            $this->fullname = get_string(
+                'fullname',
+                'tool_generator',
+                array(
+                    'size' => get_string('shortsize_' . $size, 'tool_generator')
+                )
+            );
+        } else {
+            $this->fullname = $fullname;
+        }
+
+        // Summary, on the other hand, should be empty-able.
+        if (!is_null($summary)) {
+            $this->summary = $summary;
+            $this->summaryformat = $summaryformat;
+        }
+
+        parent::__construct($size, $fixeddataset, $filesizelimit, $progress);
+    }
+
+    /**
+     * Returns the relation between users and course sizes.
+     *
+     * @return array
+     */
+    public static function get_users_per_size() {
+        return self::$paramusers;
     }
 
     /**
@@ -170,6 +225,7 @@ class tool_generator_course_backend extends tool_generator_backend {
         // Make course.
         $this->course = $this->create_course();
         $this->create_users();
+        $this->create_assignments();
         $this->create_pages();
         $this->create_small_files();
         $this->create_big_files();
@@ -194,10 +250,17 @@ class tool_generator_course_backend extends tool_generator_backend {
      */
     private function create_course() {
         $this->log('createcourse', $this->shortname);
-        $courserecord = array('shortname' => $this->shortname,
-                'fullname' => get_string('fullname', 'tool_generator',
-                    array('size' => get_string('shortsize_' . $this->size, 'tool_generator'))),
-                'numsections' => self::$paramsections[$this->size]);
+        $courserecord = array(
+            'shortname' => $this->shortname,
+            'fullname' => $this->fullname,
+            'numsections' => self::$paramsections[$this->size],
+            'startdate' => usergetmidnight(time())
+        );
+        if (strlen($this->summary) > 0) {
+            $courserecord['summary'] = $this->summary;
+            $courserecord['summary_format'] = $this->summaryformat;
+        }
+
         return $this->generator->create_course($courserecord, array('createsections' => true));
     }
 
@@ -280,6 +343,8 @@ class tool_generator_course_backend extends tool_generator_backend {
      * @param int $last Number of last user
      */
     private function create_user_accounts($first, $last) {
+        global $CFG;
+
         $this->log('createaccounts', (object)array('from' => $first, 'to' => $last), true);
         $count = $last - $first + 1;
         $done = 0;
@@ -292,12 +357,37 @@ class tool_generator_course_backend extends tool_generator_backend {
             $username = 'tool_generator_' . $textnumber;
 
             // Create user account.
-            $record = array('firstname' => get_string('firstname', 'tool_generator'),
-                    'lastname' => $number, 'username' => $username);
+            $record = array('username' => $username, 'idnumber' => $number);
+
+            // We add a user password if it has been specified.
+            if (!empty($CFG->tool_generator_users_password)) {
+                $record['password'] = $CFG->tool_generator_users_password;
+            }
+
             $user = $this->generator->create_user($record);
             $this->userids[$number] = (int)$user->id;
             $this->dot($done, $count);
         }
+        $this->end_log();
+    }
+
+    /**
+     * Creates a number of Assignment activities.
+     */
+    private function create_assignments() {
+        // Set up generator.
+        $assigngenerator = $this->generator->get_plugin_generator('mod_assign');
+
+        // Create assignments.
+        $number = self::$paramassignments[$this->size];
+        $this->log('createassignments', $number, true);
+        for ($i = 0; $i < $number; $i++) {
+            $record = array('course' => $this->course);
+            $options = array('section' => $this->get_target_section());
+            $assigngenerator->create_instance($record, $options);
+            $this->dot($i, $number);
+        }
+
         $this->end_log();
     }
 
@@ -311,8 +401,8 @@ class tool_generator_course_backend extends tool_generator_backend {
         // Create pages.
         $number = self::$parampages[$this->size];
         $this->log('createpages', $number, true);
-        for ($i=0; $i<$number; $i++) {
-            $record = array('course' => $this->course->id);
+        for ($i = 0; $i < $number; $i++) {
+            $record = array('course' => $this->course);
             $options = array('section' => $this->get_target_section());
             $pagegenerator->create_instance($record, $options);
             $this->dot($i, $number);
@@ -330,7 +420,7 @@ class tool_generator_course_backend extends tool_generator_backend {
 
         // Create resource with default textfile only.
         $resourcegenerator = $this->generator->get_plugin_generator('mod_resource');
-        $record = array('course' => $this->course->id,
+        $record = array('course' => $this->course,
                 'name' => get_string('smallfiles', 'tool_generator'));
         $options = array('section' => 0);
         $resource = $resourcegenerator->create_instance($record, $options);
@@ -345,7 +435,7 @@ class tool_generator_course_backend extends tool_generator_backend {
 
             // Generate random binary data (different for each file so it
             // doesn't compress unrealistically).
-            $data = self::get_random_binary(self::$paramsmallfilesize[$this->size]);
+            $data = self::get_random_binary($this->limit_filesize(self::$paramsmallfilesize[$this->size]));
 
             $fs->create_file_from_string($filerecord, $data);
             $this->dot($i, $count);
@@ -362,13 +452,14 @@ class tool_generator_course_backend extends tool_generator_backend {
      * @return Random data
      */
     private static function get_random_binary($length) {
+
         $data = microtime(true);
         if (strlen($data) > $length) {
             // Use last digits of data.
             return substr($data, -$length);
         }
         $length -= strlen($data);
-        for ($j=0; $j < $length; $j++) {
+        for ($j = 0; $j < $length; $j++) {
             $data .= chr(rand(1, 255));
         }
         return $data;
@@ -382,8 +473,9 @@ class tool_generator_course_backend extends tool_generator_backend {
 
         // Work out how many files and how many blocks to use (up to 64KB).
         $count = self::$parambigfilecount[$this->size];
-        $blocks = ceil(self::$parambigfilesize[$this->size] / 65536);
-        $blocksize = floor(self::$parambigfilesize[$this->size] / $blocks);
+        $filesize = $this->limit_filesize(self::$parambigfilesize[$this->size]);
+        $blocks = ceil($filesize / 65536);
+        $blocksize = floor($filesize / $blocks);
 
         $this->log('createbigfiles', $count, true);
 
@@ -396,7 +488,7 @@ class tool_generator_course_backend extends tool_generator_backend {
         $resourcegenerator = $this->generator->get_plugin_generator('mod_resource');
         for ($i = 0; $i < $count; $i++) {
             // Create resource.
-            $record = array('course' => $this->course->id,
+            $record = array('course' => $this->course,
                     'name' => get_string('bigfile', 'tool_generator', $i));
             $options = array('section' => $this->get_target_section());
             $resource = $resourcegenerator->create_instance($record, $options);
@@ -439,20 +531,20 @@ class tool_generator_course_backend extends tool_generator_backend {
 
         // Create empty forum.
         $forumgenerator = $this->generator->get_plugin_generator('mod_forum');
-        $record = array('course' => $this->course->id,
+        $record = array('course' => $this->course,
                 'name' => get_string('pluginname', 'forum'));
         $options = array('section' => 0);
         $forum = $forumgenerator->create_instance($record, $options);
 
         // Add discussions and posts.
         $sofar = 0;
-        for ($i=0; $i < $discussions; $i++) {
+        for ($i = 0; $i < $discussions; $i++) {
             $record = array('forum' => $forum->id, 'course' => $this->course->id,
                     'userid' => $this->get_target_user());
             $discussion = $forumgenerator->create_discussion($record);
             $parentid = $DB->get_field('forum_posts', 'id', array('discussion' => $discussion->id), MUST_EXIST);
             $sofar++;
-            for ($j=0; $j < $posts - 1; $j++, $sofar++) {
+            for ($j = 0; $j < $posts - 1; $j++, $sofar++) {
                 $record = array('discussion' => $discussion->id,
                         'userid' => $this->get_target_user(), 'parent' => $parentid);
                 $forumgenerator->create_post($record);
@@ -502,6 +594,22 @@ class tool_generator_course_backend extends tool_generator_backend {
         }
 
         return $userid;
+    }
+
+    /**
+     * Restricts the binary file size if necessary
+     *
+     * @param int $length The total length
+     * @return int The limited length if a limit was specified.
+     */
+    private function limit_filesize($length) {
+
+        // Limit to $this->filesizelimit.
+        if (is_numeric($this->filesizelimit) && $length > $this->filesizelimit) {
+            $length = floor($this->filesizelimit);
+        }
+
+        return $length;
     }
 
 }

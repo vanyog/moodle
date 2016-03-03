@@ -35,9 +35,19 @@ class auth_plugin_imap extends auth_plugin_base {
     /**
      * Constructor.
      */
-    function auth_plugin_imap() {
+    public function __construct() {
         $this->authtype = 'imap';
         $this->config = get_config('auth/imap');
+    }
+
+    /**
+     * Old syntax of class constructor. Deprecated in PHP7.
+     *
+     * @deprecated since Moodle 3.1
+     */
+    public function auth_plugin_imap() {
+        debugging('Use of class name as constructor is deprecated', DEBUG_DEVELOPER);
+        self::__construct();
     }
 
     /**
@@ -71,6 +81,10 @@ class auth_plugin_imap extends auth_plugin_base {
 
                 case 'imaptls':
                     $host = '{'.$host.":{$this->config->port}/imap/tls}";
+                break;
+
+                case 'imapnosslcert':
+                    $host = '{'.$host.":{$this->config->port}/imap/novalidate-cert}";
                 break;
 
                 default:
@@ -120,7 +134,11 @@ class auth_plugin_imap extends auth_plugin_base {
      * @return moodle_url
      */
     function change_password_url() {
-        return new moodle_url($this->config->changepasswordurl);
+        if (!empty($this->config->changepasswordurl)) {
+            return new moodle_url($this->config->changepasswordurl);
+        } else {
+            return null;
+        }
     }
 
     /**

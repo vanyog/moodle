@@ -18,7 +18,7 @@
 /**
  * Strings for component 'data', language 'en', branch 'MOODLE_20_STABLE'
  *
- * @package   data
+ * @package   mod_data
  * @copyright 1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -31,6 +31,7 @@ $string['addtemplate'] = 'Add template';
 $string['advancedsearch'] = 'Advanced search';
 $string['allowcomments'] = 'Allow comments on entries';
 $string['alttext'] = 'Alternative text';
+$string['approvalstatus'] = 'Approval status';
 $string['approve'] = 'Approve';
 $string['approved'] = 'Approved';
 $string['areacontent'] = 'Fields';
@@ -77,7 +78,7 @@ $string['csvimport'] = 'CSV file import';
 $string['csvimport_help'] = 'Entries may be imported via a plain text file with a list of field names as the first line, then the data, with one record per line.';
 $string['csvwithselecteddelimiter'] = '<acronym title="Comma Separated Values">CSV</acronym> text with selected delimiter:';
 $string['data:addinstance'] = 'Add a new database';
-$string['data:approve'] = 'Approve unapproved entries';
+$string['data:approve'] = 'Approve and undo approved entries';
 $string['data:comment'] = 'Write comments';
 $string['data:exportallentries'] = 'Export all database entries';
 $string['data:exportentry'] = 'Export a database entry';
@@ -110,6 +111,7 @@ $string['deletenotenrolled'] = 'Delete entries by users not enrolled';
 $string['deletewarning'] = 'Are you sure you want to delete this preset?';
 $string['descending'] = 'Descending';
 $string['directorynotapreset'] = '{$a->directory} Not a preset: missing files: {$a->missing_files}';
+$string['disapprove'] = 'Undo approval';
 $string['download'] = 'Download';
 $string['edit'] = 'Edit';
 $string['editcomment'] = 'Edit comment';
@@ -118,6 +120,14 @@ $string['editordisable'] = 'Disable editor';
 $string['editorenable'] = 'Enable editor';
 $string['emptyadd'] = 'The Add template is empty, generating a default form...';
 $string['emptyaddform'] = 'You did not fill out any fields!';
+$string['eventfieldcreated'] = 'Field created';
+$string['eventfielddeleted'] = 'Field deleted';
+$string['eventfieldupdated'] = 'Field updated';
+$string['eventrecordcreated'] = 'Record created';
+$string['eventrecorddeleted'] = 'Record deleted';
+$string['eventrecordupdated'] = 'Record updated';
+$string['eventtemplateupdated'] = 'Template updated';
+$string['eventtemplateviewed'] = 'Templates viewed';
 $string['fileencoding'] = 'Encoding';
 $string['entries'] = 'Entries';
 $string['entrieslefttoadd'] = 'You must add {$a->entriesleft} more entry/entries in order to complete this activity';
@@ -126,6 +136,7 @@ $string['entry'] = 'Entry';
 $string['entrysaved'] = 'Your entry has been saved';
 $string['errormustbeteacher'] = 'You need to be a teacher to use this page!';
 $string['errorpresetexists'] = 'There is already a preset with the selected name';
+$string['errormustsupplyvalue'] = 'You must supply a value here.';
 $string['example'] = 'Database module example';
 $string['excel'] = 'Excel';
 $string['export'] = 'Export';
@@ -197,6 +208,7 @@ $string['invalidurl'] = 'The URL you just entered is not valid';
 $string['jstemplate'] = 'Javascript template';
 $string['latitude'] = 'Latitude';
 $string['latlong'] = 'Latitude/longitude';
+$string['latlongboth'] = 'Both latitude and longitude are required.';
 $string['latlongdownloadallhint'] = 'Download link for all entries as KML';
 $string['latlongkmllabelling'] = 'How to label items in KML files (Google Earth)';
 $string['latlonglinkservicesdisplayed'] = 'Link-out services to display';
@@ -204,6 +216,8 @@ $string['latlongotherfields'] = 'Other fields';
 $string['list'] = 'View list';
 $string['listtemplate'] = 'List template';
 $string['longitude'] = 'Longitude';
+$string['manageapproved'] = 'Allow editing of approved entries';
+$string['manageapproved_help'] = 'If disabled, approved entries are no longer editable or deletable by the user who added them. This setting has no effect unless \'Approval required\' is enabled.';
 $string['mapexistingfield'] = 'Map to {$a}';
 $string['mapnewfield'] = 'Create a new field';
 $string['mappingwarning'] = 'All old fields not mapped to a new field will be lost and all data in that field will be removed.';
@@ -288,16 +302,19 @@ $string['presets'] = 'Presets';
 $string['radiobutton'] = 'Radio buttons';
 $string['recordapproved'] = 'Entry approved';
 $string['recorddeleted'] = 'Entry deleted';
+$string['recorddisapproved'] = 'Entry unapproved';
 $string['recordsnotsaved'] = 'No entry was saved. Please check the format of the uploaded file.';
 $string['recordssaved'] = 'entries saved';
 $string['requireapproval'] = 'Approval required';
 $string['requireapproval_help'] = 'If enabled, entries require approving by a teacher before they are viewable by everyone.';
+$string['required'] = 'Required';
 $string['requiredentries'] = 'Entries required for completion';
 $string['requiredentries_help'] = 'The number of entries a student is required to submit before the activity can be considered complete.';
 $string['requiredentriestoview'] = 'Entries required before viewing';
 $string['requiredentriestoview_help'] = 'The number of entries a student is required to submit before they can view entries from other students.
 
 Note: If entries are required before viewing, the database auto-linking filter should be disabled. This is because the database auto-linking filter can\'t determine whether a user has submitted the required number of entries.';
+$string['requiredfield'] = 'Required field';
 $string['resetsettings'] = 'Reset filters';
 $string['resettemplate'] = 'Reset template';
 $string['resizingimages'] = 'Resizing image thumbnails...';

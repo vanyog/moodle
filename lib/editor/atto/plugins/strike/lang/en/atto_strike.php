@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'Strike through';
-$string['strike'] = 'Strike through';

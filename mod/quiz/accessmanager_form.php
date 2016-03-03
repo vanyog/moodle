@@ -17,10 +17,9 @@
 /**
  * Defines the form that limits student's access to attempt a quiz.
  *
- * @package    mod
- * @subpackage quiz
- * @copyright  2011 The Open University
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   mod_quiz
+ * @copyright 2011 The Open University
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 
@@ -39,6 +38,7 @@ class mod_quiz_preflight_check_form extends moodleform {
 
     protected function definition() {
         $mform = $this->_form;
+        $this->_form->updateAttributes(array('id' => 'mod_quiz_preflight_form'));
 
         foreach ($this->_customdata['hidden'] as $name => $value) {
             if ($name === 'sesskey') {
@@ -55,7 +55,8 @@ class mod_quiz_preflight_check_form extends moodleform {
             }
         }
 
-        $this->add_action_buttons(true, get_string('continue'));
+        $this->add_action_buttons(true, get_string('startattempt', 'quiz'));
+        $mform->setDisableShortforms();
     }
 
     public function validation($data, $files) {

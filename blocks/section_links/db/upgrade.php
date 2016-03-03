@@ -31,11 +31,13 @@
  * Please do not forget to use upgrade_set_timeout()
  * before any action that may take longer time to finish.
  *
- * @since 2.5
+ * @since Moodle 2.5
  * @package block_section_links
  * @copyright 2013 Sam Hemelryk
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+
+defined('MOODLE_INTERNAL') || die();
 
 /**
  * Upgrade code for the section links block.
@@ -45,40 +47,16 @@
  * @param object $block
  */
 function xmldb_block_section_links_upgrade($oldversion, $block) {
-    global $DB;
+    global $CFG;
 
-    // Moodle v2.3.0 release upgrade line
-    // Put any upgrade step following this
+    // Moodle v2.8.0 release upgrade line.
+    // Put any upgrade step following this.
 
-    // Moodle v2.4.0 release upgrade line
-    // Put any upgrade step following this
+    // Moodle v2.9.0 release upgrade line.
+    // Put any upgrade step following this.
 
-    if ($oldversion < 2013012200.00) {
-
-        // The section links block used to use its own crazy plugin name.
-        // Here we are converting it to the proper component name.
-        $oldplugin = 'blocks/section_links';
-        $newplugin = 'block_section_links';
-
-        // Use the proper API here... thats what we should be doing as it ensures any caches etc are cleared
-        // along the way!
-        // It may be quicker to just write an SQL statement but that would be reckless.
-        $config = get_config($oldplugin);
-        if (!empty($config)) {
-            foreach ($config as $name => $value) {
-                set_config($name, $value, $newplugin);
-                unset_config($name, $oldplugin);
-            }
-        }
-
-        // Main savepoint reached.
-        upgrade_block_savepoint(true, 2013012200.00, 'section_links');
-    }
-
-
-    // Moodle v2.5.0 release upgrade line
-    // Put any upgrade step following this
-
+    // Moodle v3.0.0 release upgrade line.
+    // Put any upgrade step following this.
 
     return true;
 }

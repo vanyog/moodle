@@ -22,13 +22,25 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$string['pluginname'] = 'Image';
-$string['image'] = 'Image';
-$string['createimage'] = 'Insert image';
-$string['enterurl'] = 'Enter URL';
-$string['enteralt'] = 'Enter alternative text';
+$string['alignment'] = 'Alignment';
+$string['alignment_bottom'] = 'Bottom';
+$string['alignment_left'] = 'Left';
+$string['alignment_middle'] = 'Middle';
+$string['alignment_right'] = 'Right';
+$string['alignment_top'] = 'Top';
 $string['browserepositories'] = 'Browse repositories...';
-$string['accessibilityhint'] = '<p>Web content accessibility guidelines (WCAG):<br/><ul><li><a href="http://www.w3.org/TR/WCAG20/#text-equiv" target="_blank">Text Alternatives</a></li></ul></p>';
-$string['width'] = 'Width';
+$string['constrain'] = 'Auto size';
+$string['createimage'] = 'Insert image';
+$string['customstyle'] = 'Custom style';
+$string['enteralt'] = 'Describe this image for someone who cannot see it';
+$string['enterurl'] = 'Enter URL';
 $string['height'] = 'Height';
+$string['imageproperties'] = 'Image properties';
+$string['presentation'] = 'Description not necessary';
+$string['pluginname'] = 'Image';
+$string['presentationoraltrequired'] = 'Images must have a description, except if the description is marked as not necessary.';
 $string['preview'] = 'Preview';
+$string['saveimage'] = 'Save image';
+$string['size'] = 'Size';
+$string['uploading'] = 'Uploading, please wait...';
+$string['width'] = 'Width';

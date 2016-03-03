@@ -18,8 +18,7 @@
 /**
  * Page module admin settings and defaults
  *
- * @package    mod
- * @subpackage page
+ * @package mod_page
  * @copyright  2009 Petr Skoda (http://skodak.org)
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -33,8 +32,6 @@ if ($ADMIN->fulltree) {
     $defaultdisplayoptions = array(RESOURCELIB_DISPLAY_OPEN);
 
     //--- general settings -----------------------------------------------------------------------------------
-    $settings->add(new admin_setting_configcheckbox('page/requiremodintro',
-        get_string('requiremodintro', 'admin'), get_string('configrequiremodintro', 'admin'), 1));
     $settings->add(new admin_setting_configmultiselect('page/displayoptions',
         get_string('displayoptions', 'page'), get_string('configdisplayoptions', 'page'),
         $defaultdisplayoptions, $displayoptions));

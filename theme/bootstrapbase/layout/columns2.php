@@ -14,7 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-$left = (!right_to_left());  // To know if to add 'pull-right' and 'desktop-first-column' classes in the layout for LTR.
+/**
+ * A two column layout for the Bootstrapbase theme.
+ *
+ * @package   theme_bootstrapbase
+ * @copyright 2012 Bas Brands, www.basbrands.nl
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+// Set default (LTR) layout mark-up for a two column page (side-pre-only).
+$regionmain = 'span9 pull-right';
+$sidepre = 'span3 desktop-first-column';
+// Reset layout mark-up for RTL languages.
+if (right_to_left()) {
+    $regionmain = 'span9';
+    $sidepre = 'span3 pull-right';
+}
+
 echo $OUTPUT->doctype() ?>
 <html <?php echo $OUTPUT->htmlattributes(); ?>>
 <head>
@@ -28,20 +44,19 @@ echo $OUTPUT->doctype() ?>
 
 <?php echo $OUTPUT->standard_top_of_body_html() ?>
 
-<header role="banner" class="navbar navbar-fixed-top">
+<header role="banner" class="navbar navbar-fixed-top moodle-has-zindex">
     <nav role="navigation" class="navbar-inner">
         <div class="container-fluid">
-            <a class="brand" href="<?php echo $CFG->wwwroot;?>"><?php echo $SITE->shortname; ?></a>
-            <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-            </a>
+            <a class="brand" href="<?php echo $CFG->wwwroot;?>"><?php echo
+                format_string($SITE->shortname, true, array('context' => context_course::instance(SITEID)));
+                ?></a>
+            <?php echo $OUTPUT->navbar_button(); ?>
+            <?php echo $OUTPUT->user_menu(); ?>
+            <?php echo $OUTPUT->search_box(); ?>
             <div class="nav-collapse collapse">
                 <?php echo $OUTPUT->custom_menu(); ?>
                 <ul class="nav pull-right">
                     <li><?php echo $OUTPUT->page_heading_menu(); ?></li>
-                    <li class="navbar-text"><?php echo $OUTPUT->login_info() ?></li>
                 </ul>
             </div>
         </div>
@@ -49,33 +64,16 @@ echo $OUTPUT->doctype() ?>
 </header>
 
 <div id="page" class="container-fluid">
-
-    <header id="page-header" class="clearfix">
-        <div id="page-navbar" class="clearfix">
-            <div class="breadcrumb-nav"><?php echo $OUTPUT->navbar(); ?></div>
-            <nav class="breadcrumb-button"><?php echo $OUTPUT->page_heading_button(); ?></nav>
-        </div>
-        <?php echo $OUTPUT->page_heading(); ?>
-        <div id="course-header">
-            <?php echo $OUTPUT->course_header(); ?>
-        </div>
-    </header>
-
+    <?php echo $OUTPUT->full_header(); ?>
     <div id="page-content" class="row-fluid">
-        <section id="region-main" class="span9<?php if ($left) { echo ' pull-right'; } ?>">
+        <section id="region-main" class="<?php echo $regionmain; ?>">
             <?php
             echo $OUTPUT->course_content_header();
             echo $OUTPUT->main_content();
             echo $OUTPUT->course_content_footer();
             ?>
         </section>
-        <?php
-        $classextra = '';
-        if ($left) {
-            $classextra = ' desktop-first-column';
-        }
-        echo $OUTPUT->blocks('side-pre', 'span3'.$classextra);
-        ?>
+        <?php echo $OUTPUT->blocks('side-pre', $sidepre); ?>
     </div>
 
     <footer id="page-footer">

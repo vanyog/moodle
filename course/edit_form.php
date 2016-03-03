@@ -6,12 +6,18 @@ require_once($CFG->libdir.'/formslib.php');
 require_once($CFG->libdir.'/completionlib.php');
 require_once($CFG->libdir. '/coursecatlib.php');
 
+/**
+ * The form for handling editing a course.
+ */
 class course_edit_form extends moodleform {
     protected $course;
     protected $context;
 
+    /**
+     * Form definition.
+     */
     function definition() {
-        global $USER, $CFG, $DB, $PAGE;
+        global $CFG, $PAGE;
 
         $mform    = $this->_form;
         $PAGE->requires->yui_module('moodle-course-formatchooser', 'M.course.init_formatchooser',
@@ -21,6 +27,7 @@ class course_edit_form extends moodleform {
         $category      = $this->_customdata['category'];
         $editoroptions = $this->_customdata['editoroptions'];
         $returnto = $this->_customdata['returnto'];
+        $returnurl = $this->_customdata['returnurl'];
 
         $systemcontext   = context_system::instance();
         $categorycontext = context_coursecat::instance($category->id);
@@ -38,13 +45,16 @@ class course_edit_form extends moodleform {
         $this->course  = $course;
         $this->context = $context;
 
-/// form definition with new course defaults
-//--------------------------------------------------------------------------------
+        // Form definition with new course defaults.
         $mform->addElement('header','general', get_string('general', 'form'));
 
         $mform->addElement('hidden', 'returnto', null);
         $mform->setType('returnto', PARAM_ALPHANUM);
         $mform->setConstant('returnto', $returnto);
+
+        $mform->addElement('hidden', 'returnurl', null);
+        $mform->setType('returnurl', PARAM_LOCALURL);
+        $mform->setConstant('returnurl', $returnurl);
 
         $mform->addElement('text','fullname', get_string('fullnamecourse'),'maxlength="254" size="50"');
         $mform->addHelpButton('fullname', 'fullnamecourse');
@@ -194,6 +204,16 @@ class course_edit_form extends moodleform {
         $mform->addElement('select', 'lang', get_string('forcelanguage'), $languages);
         $mform->setDefault('lang', $courseconfig->lang);
 
+        // Multi-Calendar Support - see MDL-18375.
+        $calendartypes = \core_calendar\type_factory::get_list_of_calendar_types();
+        // We do not want to show this option unless there is more than one calendar type to display.
+        if (count($calendartypes) > 1) {
+            $calendars = array();
+            $calendars[''] = get_string('forceno');
+            $calendars += $calendartypes;
+            $mform->addElement('select', 'calendartype', get_string('forcecalendartype', 'calendar'), $calendars);
+        }
+
         $options = range(0, 10);
         $mform->addElement('select', 'newsitems', get_string('newsitemsnumber'), $options);
         $mform->addHelpButton('newsitems', 'newsitemsnumber');
@@ -247,10 +267,8 @@ class course_edit_form extends moodleform {
             $mform->setDefault('enablecompletion', 0);
         }
 
-//--------------------------------------------------------------------------------
         enrol_course_edit_form($mform, $course, $context);
 
-//--------------------------------------------------------------------------------
         $mform->addElement('header','groups', get_string('groupsettingsheader', 'group'));
 
         $choices = array();
@@ -270,33 +288,51 @@ class course_edit_form extends moodleform {
         $options[0] = get_string('none');
         $mform->addElement('select', 'defaultgroupingid', get_string('defaultgrouping', 'group'), $options);
 
-//--------------------------------------------------------------------------------
+        if ((empty($course->id) && guess_if_creator_will_have_course_capability('moodle/course:renameroles', $categorycontext))
+                || (!empty($course->id) && has_capability('moodle/course:renameroles', $coursecontext))) {
+            // Customizable role names in this course.
+            $mform->addElement('header', 'rolerenaming', get_string('rolerenaming'));
+            $mform->addHelpButton('rolerenaming', 'rolerenaming');
 
-/// customizable role names in this course
-//--------------------------------------------------------------------------------
-        $mform->addElement('header','rolerenaming', get_string('rolerenaming'));
-        $mform->addHelpButton('rolerenaming', 'rolerenaming');
-
-        if ($roles = get_all_roles()) {
-            $roles = role_fix_names($roles, null, ROLENAME_ORIGINAL);
-            $assignableroles = get_roles_for_contextlevels(CONTEXT_COURSE);
-            foreach ($roles as $role) {
-                $mform->addElement('text', 'role_'.$role->id, get_string('yourwordforx', '', $role->localname));
-                $mform->setType('role_'.$role->id, PARAM_TEXT);
+            if ($roles = get_all_roles()) {
+                $roles = role_fix_names($roles, null, ROLENAME_ORIGINAL);
+                $assignableroles = get_roles_for_contextlevels(CONTEXT_COURSE);
+                foreach ($roles as $role) {
+                    $mform->addElement('text', 'role_' . $role->id, get_string('yourwordforx', '', $role->localname));
+                    $mform->setType('role_' . $role->id, PARAM_TEXT);
+                }
             }
         }
 
-//--------------------------------------------------------------------------------
-        $this->add_action_buttons();
-//--------------------------------------------------------------------------------
+        if (core_tag_tag::is_enabled('core', 'course') &&
+                ((empty($course->id) && guess_if_creator_will_have_course_capability('moodle/course:tag', $categorycontext))
+                || (!empty($course->id) && has_capability('moodle/course:tag', $coursecontext)))) {
+            $mform->addElement('header', 'tagshdr', get_string('tags', 'tag'));
+            $mform->addElement('tags', 'tags', get_string('tags'),
+                    array('itemtype' => 'course', 'component' => 'core'));
+        }
+
+        // When two elements we need a group.
+        $buttonarray = array();
+        $classarray = array('class' => 'form-submit');
+        if ($returnto !== 0) {
+            $buttonarray[] = &$mform->createElement('submit', 'saveandreturn', get_string('savechangesandreturn'), $classarray);
+        }
+        $buttonarray[] = &$mform->createElement('submit', 'saveanddisplay', get_string('savechangesanddisplay'), $classarray);
+        $buttonarray[] = &$mform->createElement('cancel');
+        $mform->addGroup($buttonarray, 'buttonar', '', array(' '), false);
+        $mform->closeHeaderBefore('buttonar');
+
         $mform->addElement('hidden', 'id', null);
         $mform->setType('id', PARAM_INT);
 
-/// finally set the current form data
-//--------------------------------------------------------------------------------
+        // Finally set the current form data
         $this->set_data($course);
     }
 
+    /**
+     * Fill in the current page data for this course.
+     */
     function definition_after_data() {
         global $DB;
 
@@ -310,6 +346,7 @@ class course_edit_form extends moodleform {
                     $options[$grouping->id] = format_string($grouping->name);
                 }
             }
+            core_collator::asort($options);
             $gr_el =& $mform->getElement('defaultgroupingid');
             $gr_el->load($options);
         }
@@ -327,21 +364,31 @@ class course_edit_form extends moodleform {
         }
     }
 
-/// perform some extra moodle validation
+    /**
+     * Validation.
+     *
+     * @param array $data
+     * @param array $files
+     * @return array the errors that were found
+     */
     function validation($data, $files) {
-        global $DB, $CFG;
+        global $DB;
 
         $errors = parent::validation($data, $files);
-        if ($foundcourses = $DB->get_records('course', array('shortname'=>$data['shortname']))) {
-            if (!empty($data['id'])) {
-                unset($foundcourses[$data['id']]);
+
+        // Add field validation check for duplicate shortname.
+        if ($course = $DB->get_record('course', array('shortname' => $data['shortname']), '*', IGNORE_MULTIPLE)) {
+            if (empty($data['id']) || $course->id != $data['id']) {
+                $errors['shortname'] = get_string('shortnametaken', '', $course->fullname);
             }
-            if (!empty($foundcourses)) {
-                foreach ($foundcourses as $foundcourse) {
-                    $foundcoursenames[] = $foundcourse->fullname;
+        }
+
+        // Add field validation check for duplicate idnumber.
+        if (!empty($data['idnumber']) && (empty($data['id']) || $this->course->idnumber != $data['idnumber'])) {
+            if ($course = $DB->get_record('course', array('idnumber' => $data['idnumber']), '*', IGNORE_MULTIPLE)) {
+                if (empty($data['id']) || $course->id != $data['id']) {
+                    $errors['idnumber'] = get_string('courseidnumbertaken', 'error', $course->fullname);
                 }
-                $foundcoursenamestring = implode(',', $foundcoursenames);
-                $errors['shortname']= get_string('shortnametaken', '', $foundcoursenamestring);
             }
         }
 

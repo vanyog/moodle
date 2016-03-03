@@ -18,8 +18,7 @@
 /**
  * Url module admin settings and defaults
  *
- * @package    mod
- * @subpackage url
+ * @package    mod_url
  * @copyright  2009 Petr Skoda  {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -45,8 +44,6 @@ if ($ADMIN->fulltree) {
     //--- general settings -----------------------------------------------------------------------------------
     $settings->add(new admin_setting_configtext('url/framesize',
         get_string('framesize', 'url'), get_string('configframesize', 'url'), 130, PARAM_INT));
-    $settings->add(new admin_setting_configcheckbox('url/requiremodintro',
-        get_string('requiremodintro', 'admin'), get_string('configrequiremodintro', 'admin'), 1));
     $settings->add(new admin_setting_configpasswordunmask('url/secretphrase', get_string('password'),
         get_string('configsecretphrase', 'url'), ''));
     $settings->add(new admin_setting_configcheckbox('url/rolesinparams',
@@ -58,8 +55,6 @@ if ($ADMIN->fulltree) {
     //--- modedit defaults -----------------------------------------------------------------------------------
     $settings->add(new admin_setting_heading('urlmodeditdefaults', get_string('modeditdefaults', 'admin'), get_string('condifmodeditdefaults', 'admin')));
 
-    $settings->add(new admin_setting_configcheckbox('url/printheading',
-        get_string('printheading', 'url'), get_string('printheadingexplain', 'url'), 0));
     $settings->add(new admin_setting_configcheckbox('url/printintro',
         get_string('printintro', 'url'), get_string('printintroexplain', 'url'), 1));
     $settings->add(new admin_setting_configselect('url/display',

@@ -203,7 +203,6 @@ $ACCESSLIB_PRIVATE = new stdClass();
 $ACCESSLIB_PRIVATE->dirtycontexts    = null;    // Dirty contexts cache, loaded from DB once per page
 $ACCESSLIB_PRIVATE->accessdatabyuser = array(); // Holds the cache of $accessdata structure for users (including $USER)
 $ACCESSLIB_PRIVATE->rolepermissions  = array(); // role permissions cache - helps a lot with mem usage
-$ACCESSLIB_PRIVATE->capabilities     = null;    // detailed information about the capabilities
 
 /**
  * Clears accesslib's private caches. ONLY BE USED BY UNIT TESTS
@@ -241,7 +240,6 @@ function accesslib_clear_all_caches($resetcontexts) {
     $ACCESSLIB_PRIVATE->dirtycontexts    = null;
     $ACCESSLIB_PRIVATE->accessdatabyuser = array();
     $ACCESSLIB_PRIVATE->rolepermissions  = array();
-    $ACCESSLIB_PRIVATE->capabilities     = null;
 
     if ($resetcontexts) {
         context_helper::reset_caches();
@@ -434,7 +432,7 @@ function has_capability($capability, context $context, $user = null, $doanything
     // context path/depth must be valid
     if (empty($context->path) or $context->depth == 0) {
         // this should not happen often, each upgrade tries to rebuild the context paths
-        debugging('Context id '.$context->id.' does not have valid path, please use build_context_path()');
+        debugging('Context id '.$context->id.' does not have valid path, please use context_helper::build_all_paths()');
         if (is_siteadmin($userid)) {
             return true;
         } else {
@@ -1113,12 +1111,12 @@ function get_empty_accessdata() {
 function get_user_accessdata($userid, $preloadonly=false) {
     global $CFG, $ACCESSLIB_PRIVATE, $USER;
 
-    if (!empty($USER->acces['rdef']) and empty($ACCESSLIB_PRIVATE->rolepermissions)) {
+    if (!empty($USER->access['rdef']) and empty($ACCESSLIB_PRIVATE->rolepermissions)) {
         // share rdef from USER session with rolepermissions cache in order to conserve memory
-        foreach($USER->acces['rdef'] as $k=>$v) {
-            $ACCESSLIB_PRIVATE->rolepermissions[$k] =& $USER->acces['rdef'][$k];
+        foreach ($USER->access['rdef'] as $k=>$v) {
+            $ACCESSLIB_PRIVATE->rolepermissions[$k] =& $USER->access['rdef'][$k];
         }
-        $ACCESSLIB_PRIVATE->accessdatabyuser[$USER->id] = $USER->acces;
+        $ACCESSLIB_PRIVATE->accessdatabyuser[$USER->id] = $USER->access;
     }
 
     if (!isset($ACCESSLIB_PRIVATE->accessdatabyuser[$userid])) {
@@ -1269,7 +1267,7 @@ function reload_all_capabilities() {
  * Useful for the "temporary guest" access we grant to logged-in users.
  * This is useful for enrol plugins only.
  *
- * @since 2.2
+ * @since Moodle 2.2
  * @param context_course $coursecontext
  * @param int $roleid
  * @return void
@@ -1309,7 +1307,7 @@ function load_temp_course_role(context_course $coursecontext, $roleid) {
  * Removes any extra guest roles from current USER->access array.
  * This is useful for enrol plugins only.
  *
- * @since 2.2
+ * @since Moodle 2.2
  * @param context_course $coursecontext
  * @return void
  */
@@ -1528,7 +1526,6 @@ function delete_role($roleid) {
             'objectid' => $roleid,
             'other' =>
                 array(
-                    'name' => $role->name,
                     'shortname' => $role->shortname,
                     'description' => $role->description,
                     'archetype' => $role->archetype
@@ -1676,7 +1673,7 @@ function get_roles_with_capability($capability, $permission = null, $context = n
  * @return int new/existing id of the assignment
  */
 function role_assign($roleid, $userid, $contextid, $component = '', $itemid = 0, $timemodified = '') {
-    global $USER, $DB;
+    global $USER, $DB, $CFG;
 
     // first of all detect if somebody is using old style parameters
     if ($contextid === 0 or is_numeric($component)) {
@@ -1745,6 +1742,7 @@ function role_assign($roleid, $userid, $contextid, $component = '', $itemid = 0,
     $ra->itemid       = $itemid;
     $ra->timemodified = $timemodified;
     $ra->modifierid   = empty($USER->id) ? 0 : $USER->id;
+    $ra->sortorder    = 0;
 
     $ra->id = $DB->insert_record('role_assignments', $ra);
 
@@ -1756,9 +1754,19 @@ function role_assign($roleid, $userid, $contextid, $component = '', $itemid = 0,
         reload_all_capabilities();
     }
 
-    $event = \core\event\role_assigned::create(
-        array('context'=>$context, 'objectid'=>$ra->roleid, 'relateduserid'=>$ra->userid,
-            'other'=>array('id'=>$ra->id, 'component'=>$ra->component, 'itemid'=>$ra->itemid)));
+    require_once($CFG->libdir . '/coursecatlib.php');
+    coursecat::role_assignment_changed($roleid, $context);
+
+    $event = \core\event\role_assigned::create(array(
+        'context' => $context,
+        'objectid' => $ra->roleid,
+        'relateduserid' => $ra->userid,
+        'other' => array(
+            'id' => $ra->id,
+            'component' => $ra->component,
+            'itemid' => $ra->itemid
+        )
+    ));
     $event->add_record_snapshot('role_assignments', $ra);
     $event->trigger();
 
@@ -1806,6 +1814,7 @@ function role_unassign($roleid, $userid, $contextid, $component = '', $itemid = 
  */
 function role_unassign_all(array $params, $subcontexts = false, $includemanual = false) {
     global $USER, $CFG, $DB;
+    require_once($CFG->libdir . '/coursecatlib.php');
 
     if (!$params) {
         throw new coding_exception('Missing parameters in role_unsassign_all() call');
@@ -1844,11 +1853,19 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
             if (!empty($USER->id) && $USER->id == $ra->userid) {
                 reload_all_capabilities();
             }
-            $event = \core\event\role_unassigned::create(
-                array('context'=>$context, 'objectid'=>$ra->roleid, 'relateduserid'=>$ra->userid,
-                    'other'=>array('id'=>$ra->id, 'component'=>$ra->component, 'itemid'=>$ra->itemid)));
+            $event = \core\event\role_unassigned::create(array(
+                'context' => $context,
+                'objectid' => $ra->roleid,
+                'relateduserid' => $ra->userid,
+                'other' => array(
+                    'id' => $ra->id,
+                    'component' => $ra->component,
+                    'itemid' => $ra->itemid
+                )
+            ));
             $event->add_record_snapshot('role_assignments', $ra);
             $event->trigger();
+            coursecat::role_assignment_changed($ra->roleid, $context);
         }
     }
     unset($ras);
@@ -1880,6 +1897,7 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
                             'other'=>array('id'=>$ra->id, 'component'=>$ra->component, 'itemid'=>$ra->itemid)));
                     $event->add_record_snapshot('role_assignments', $ra);
                     $event->trigger();
+                    coursecat::role_assignment_changed($ra->roleid, $context);
                 }
             }
         }
@@ -2242,9 +2260,10 @@ function can_access_course(stdClass $course, $user = null, $withcapability = '',
  * @param string $withcapability
  * @param int $groupid 0 means ignore groups, any other value limits the result by group id
  * @param bool $onlyactive consider only active enrolments in enabled plugins and time restrictions
+ * @param bool $onlysuspended inverse of onlyactive, consider only suspended enrolments
  * @return array list($sql, $params)
  */
-function get_enrolled_sql(context $context, $withcapability = '', $groupid = 0, $onlyactive = false) {
+function get_enrolled_sql(context $context, $withcapability = '', $groupid = 0, $onlyactive = false, $onlysuspended = false) {
     global $DB, $CFG;
 
     // use unique prefix just in case somebody makes some SQL magic with the result
@@ -2256,6 +2275,13 @@ function get_enrolled_sql(context $context, $withcapability = '', $groupid = 0, 
     $coursecontext = $context->get_course_context();
 
     $isfrontpage = ($coursecontext->instanceid == SITEID);
+
+    if ($onlyactive && $onlysuspended) {
+        throw new coding_exception("Both onlyactive and onlysuspended are set, this is probably not what you want!");
+    }
+    if ($isfrontpage && $onlysuspended) {
+        throw new coding_exception("onlysuspended is not supported on frontpage; please add your own early-exit!");
+    }
 
     $joins  = array();
     $wheres = array();
@@ -2373,13 +2399,28 @@ function get_enrolled_sql(context $context, $withcapability = '', $groupid = 0, 
     if ($isfrontpage) {
         // all users are "enrolled" on the frontpage
     } else {
-        $joins[] = "JOIN {user_enrolments} {$prefix}ue ON {$prefix}ue.userid = {$prefix}u.id";
-        $joins[] = "JOIN {enrol} {$prefix}e ON ({$prefix}e.id = {$prefix}ue.enrolid AND {$prefix}e.courseid = :{$prefix}courseid)";
+        $where1 = "{$prefix}ue.status = :{$prefix}active AND {$prefix}e.status = :{$prefix}enabled";
+        $where2 = "{$prefix}ue.timestart < :{$prefix}now1 AND ({$prefix}ue.timeend = 0 OR {$prefix}ue.timeend > :{$prefix}now2)";
+        $ejoin = "JOIN {enrol} {$prefix}e ON ({$prefix}e.id = {$prefix}ue.enrolid AND {$prefix}e.courseid = :{$prefix}courseid)";
         $params[$prefix.'courseid'] = $coursecontext->instanceid;
 
-        if ($onlyactive) {
-            $wheres[] = "{$prefix}ue.status = :{$prefix}active AND {$prefix}e.status = :{$prefix}enabled";
-            $wheres[] = "{$prefix}ue.timestart < :{$prefix}now1 AND ({$prefix}ue.timeend = 0 OR {$prefix}ue.timeend > :{$prefix}now2)";
+        if (!$onlysuspended) {
+            $joins[] = "JOIN {user_enrolments} {$prefix}ue ON {$prefix}ue.userid = {$prefix}u.id";
+            $joins[] = $ejoin;
+            if ($onlyactive) {
+                $wheres[] = "$where1 AND $where2";
+            }
+        } else {
+            // Suspended only where there is enrolment but ALL are suspended.
+            // Consider multiple enrols where one is not suspended or plain role_assign.
+            $enrolselect = "SELECT DISTINCT {$prefix}ue.userid FROM {user_enrolments} {$prefix}ue $ejoin WHERE $where1 AND $where2";
+            $joins[] = "JOIN {user_enrolments} {$prefix}ue1 ON {$prefix}ue1.userid = {$prefix}u.id";
+            $joins[] = "JOIN {enrol} {$prefix}e1 ON ({$prefix}e1.id = {$prefix}ue1.enrolid AND {$prefix}e1.courseid = :{$prefix}_e1_courseid)";
+            $params["{$prefix}_e1_courseid"] = $coursecontext->instanceid;
+            $wheres[] = "{$prefix}u.id NOT IN ($enrolselect)";
+        }
+
+        if ($onlyactive || $onlysuspended) {
             $now = round(time(), -2); // rounding helps caching in DB
             $params = array_merge($params, array($prefix.'enabled'=>ENROL_INSTANCE_ENABLED,
                                                  $prefix.'active'=>ENROL_USER_ACTIVE,
@@ -2495,7 +2536,14 @@ function load_capability_def($component) {
  */
 function get_cached_capabilities($component = 'moodle') {
     global $DB;
-    return $DB->get_records('capabilities', array('component'=>$component));
+    $caps = get_all_capabilities();
+    $componentcaps = array();
+    foreach ($caps as $cap) {
+        if ($cap['component'] == $component) {
+            $componentcaps[] = (object) $cap;
+        }
+    }
+    return $componentcaps;
 }
 
 /**
@@ -2514,12 +2562,12 @@ function get_default_capabilities($archetype) {
     $alldefs = array();
     $defaults = array();
     $components = array();
-    $allcaps = $DB->get_records('capabilities');
+    $allcaps = get_all_capabilities();
 
     foreach ($allcaps as $cap) {
-        if (!in_array($cap->component, $components)) {
-            $components[] = $cap->component;
-            $alldefs = array_merge($alldefs, load_capability_def($cap->component));
+        if (!in_array($cap['component'], $components)) {
+            $components[] = $cap['component'];
+            $alldefs = array_merge($alldefs, load_capability_def($cap['component']));
         }
     }
     foreach($alldefs as $name=>$def) {
@@ -2616,8 +2664,11 @@ function get_default_role_archetype_allows($type, $archetype) {
  * Reset role capabilities to default according to selected role archetype.
  * If no archetype selected, removes all capabilities.
  *
- * @param int $roleid
- * @return void
+ * This applies to capabilities that are assigned to the role (that you could
+ * edit in the 'define roles' interface), and not to any capability overrides
+ * in different locations.
+ *
+ * @param int $roleid ID of role to reset capabilities for
  */
 function reset_role_capabilities($roleid) {
     global $DB;
@@ -2627,11 +2678,15 @@ function reset_role_capabilities($roleid) {
 
     $systemcontext = context_system::instance();
 
-    $DB->delete_records('role_capabilities', array('roleid'=>$roleid));
+    $DB->delete_records('role_capabilities',
+            array('roleid' => $roleid, 'contextid' => $systemcontext->id));
 
     foreach($defaultcaps as $cap=>$permission) {
         assign_capability($cap, $permission, $roleid, $systemcontext->id);
     }
+
+    // Mark the system context dirty.
+    context_system::instance()->mark_dirty();
 }
 
 /**
@@ -2658,6 +2713,10 @@ function update_capabilities($component = 'moodle') {
             debugging("Coding problem: Invalid capability name '$capname', use 'clonepermissionsfrom' field for migration.");
         }
     }
+
+    // It is possible somebody directly modified the DB (according to accesslib_test anyway).
+    // So ensure our updating is based on fresh data.
+    cache::make('core', 'capabilities')->delete('core_capabilities');
 
     $cachedcaps = get_cached_capabilities($component);
     if ($cachedcaps) {
@@ -2693,6 +2752,9 @@ function update_capabilities($component = 'moodle') {
             }
         }
     }
+
+    // Flush the cached again, as we have changed DB.
+    cache::make('core', 'capabilities')->delete('core_capabilities');
 
     // Are there new capabilities in the file definition?
     $newcaps = array();
@@ -2744,6 +2806,9 @@ function update_capabilities($component = 'moodle') {
     // reset static caches
     accesslib_clear_all_caches(false);
 
+    // Flush the cached again, as we have changed DB.
+    cache::make('core', 'capabilities')->delete('core_capabilities');
+
     return true;
 }
 
@@ -2781,6 +2846,9 @@ function capabilities_cleanup($component, $newcapdef = null) {
                 }
             } // End if.
         }
+    }
+    if ($removedcount) {
+        cache::make('core', 'capabilities')->delete('core_capabilities');
     }
     return $removedcount;
 }
@@ -2902,21 +2970,34 @@ function is_inside_frontpage(context $context) {
 function get_capability_info($capabilityname) {
     global $ACCESSLIB_PRIVATE, $DB; // one request per page only
 
-    //TODO: MUC - this could be cached in shared memory, it would eliminate 1 query per page
+    $caps = get_all_capabilities();
 
-    if (empty($ACCESSLIB_PRIVATE->capabilities)) {
-        $ACCESSLIB_PRIVATE->capabilities = array();
-        $caps = $DB->get_records('capabilities', array(), 'id, name, captype, riskbitmask');
-        foreach ($caps as $cap) {
-            $capname = $cap->name;
-            unset($cap->id);
-            unset($cap->name);
-            $cap->riskbitmask = (int)$cap->riskbitmask;
-            $ACCESSLIB_PRIVATE->capabilities[$capname] = $cap;
-        }
+    if (!isset($caps[$capabilityname])) {
+        return null;
     }
 
-    return isset($ACCESSLIB_PRIVATE->capabilities[$capabilityname]) ? $ACCESSLIB_PRIVATE->capabilities[$capabilityname] : null;
+    return (object) $caps[$capabilityname];
+}
+
+/**
+ * Returns all capabilitiy records, preferably from MUC and not database.
+ *
+ * @return array All capability records indexed by capability name
+ */
+function get_all_capabilities() {
+    global $DB;
+    $cache = cache::make('core', 'capabilities');
+    if (!$allcaps = $cache->get('core_capabilities')) {
+        $rs = $DB->get_recordset('capabilities');
+        $allcaps = array();
+        foreach ($rs as $capability) {
+            $capability->riskbitmask = (int) $capability->riskbitmask;
+            $allcaps[$capability->name] = (array) $capability;
+        }
+        $rs->close();
+        $cache->set('core_capabilities', $allcaps);
+    }
+    return $allcaps;
 }
 
 /**
@@ -2967,7 +3048,7 @@ function get_component_string($component, $contextlevel) {
 
     if ($component === 'moodle' or $component === 'core') {
         switch ($contextlevel) {
-            // TODO: this should probably use context level names instead
+            // TODO MDL-46123: this should probably use context level names instead
             case CONTEXT_SYSTEM:    return get_string('coresystem');
             case CONTEXT_USER:      return get_string('users');
             case CONTEXT_COURSECAT: return get_string('categories');
@@ -2986,7 +3067,7 @@ function get_component_string($component, $contextlevel) {
     }
 
     switch ($type) {
-        // TODO: this is really hacky, anyway it should be probably moved to lib/pluginlib.php
+        // TODO MDL-46123: this is really hacky and should be improved.
         case 'quiz':         return get_string($name.':componentname', $component);// insane hack!!!
         case 'repository':   return get_string('repository', 'repository').': '.get_string('pluginname', $component);
         case 'gradeimport':  return get_string('gradeimport', 'grades').': '.get_string('pluginname', $component);
@@ -3087,10 +3168,6 @@ function get_user_roles_in_course($userid, $courseid) {
         $context = context_system::instance();
     } else {
         $context = context_course::instance($courseid);
-    }
-
-    if (empty($CFG->profileroles)) {
-        return array();
     }
 
     list($rallowed, $params) = $DB->get_in_or_equal(explode(',', $CFG->profileroles), SQL_PARAMS_NAMED, 'a');
@@ -4028,6 +4105,18 @@ function sort_by_roleassignment_authority($users, context $context, $roles = arr
 /**
  * Gets all the users assigned this role in this context or higher
  *
+ * Note that moodle is based on capabilities and it is usually better
+ * to check permissions than to check role ids as the capabilities
+ * system is more flexible. If you really need, you can to use this
+ * function but consider has_capability() as a possible substitute.
+ *
+ * The caller function is responsible for including all the
+ * $sort fields in $fields param.
+ *
+ * If $roleid is an array or is empty (all roles) you need to set $fields
+ * (and $sort by extension) params according to it, as the first field
+ * returned by the database should be unique (ra.id is the best candidate).
+ *
  * @param int $roleid (can also be an array of ints!)
  * @param context $context
  * @param bool $parent if true, get list of users assigned in higher context too
@@ -4054,6 +4143,23 @@ function get_role_users($roleid, context $context, $parent = false, $fields = ''
                   'u.country, u.picture, u.idnumber, u.department, u.institution, '.
                   'u.lang, u.timezone, u.lastaccess, u.mnethostid, r.name AS rolename, r.sortorder, '.
                   'r.shortname AS roleshortname, rn.name AS rolecoursealias';
+    }
+
+    // Prevent wrong function uses.
+    if ((empty($roleid) || is_array($roleid)) && strpos($fields, 'ra.id') !== 0) {
+        debugging('get_role_users() without specifying one single roleid needs to be called prefixing ' .
+            'role assignments id (ra.id) as unique field, you can use $fields param for it.');
+
+        if (!empty($roleid)) {
+            // Solving partially the issue when specifying multiple roles.
+            $users = array();
+            foreach ($roleid as $id) {
+                // Ignoring duplicated keys keeping the first user appearance.
+                $users = $users + get_role_users($id, $context, $parent, $fields, $sort, $all, $group,
+                    $limitfrom, $limitnum, $extrawheretest, $whereorsortparams);
+            }
+            return $users;
+        }
     }
 
     $parentcontexts = '';
@@ -4163,7 +4269,7 @@ function count_role_users($roleid, context $context, $parent = false) {
 
     array_unshift($params, $context->id);
 
-    $sql = "SELECT COUNT(u.id)
+    $sql = "SELECT COUNT(DISTINCT u.id)
               FROM {role_assignments} r
               JOIN {user} u ON u.id = r.userid
              WHERE (r.contextid = ? $parentcontexts)
@@ -4184,7 +4290,7 @@ function count_role_users($roleid, context $context, $parent = false) {
  *   otherwise use a comma-separated list of the fields you require, not including id
  * @param string $orderby If set, use a comma-separated list of fields from course
  *   table with sql modifiers (DESC) if needed
- * @return array Array of courses, may have zero entries. Or false if query failed.
+ * @return array|bool Array of courses, if none found false is returned.
  */
 function get_user_capability_course($capability, $userid = null, $doanything = true, $fieldsexceptid = '', $orderby = '') {
     global $DB;
@@ -4954,7 +5060,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  *
  * @property-read int $id context id
  * @property-read int $contextlevel CONTEXT_SYSTEM, CONTEXT_COURSE, etc.
@@ -5135,7 +5241,7 @@ abstract class context extends stdClass implements IteratorAggregate {
      * @return void (modifies $rec)
      */
      protected static function preload_from_record(stdClass $rec) {
-         if (empty($rec->ctxid) or empty($rec->ctxlevel) or empty($rec->ctxinstance) or empty($rec->ctxpath) or empty($rec->ctxdepth)) {
+         if (empty($rec->ctxid) or empty($rec->ctxlevel) or !isset($rec->ctxinstance) or empty($rec->ctxpath) or empty($rec->ctxdepth)) {
              // $rec does not have enough data, passed here repeatedly or context does not exist yet
              return;
          }
@@ -5236,7 +5342,7 @@ abstract class context extends stdClass implements IteratorAggregate {
      * @param stdClass $record
      */
     protected function __construct(stdClass $record) {
-        $this->_id           = $record->id;
+        $this->_id           = (int)$record->id;
         $this->_contextlevel = (int)$record->contextlevel;
         $this->_instanceid   = $record->instanceid;
         $this->_path         = $record->path;
@@ -5463,6 +5569,10 @@ abstract class context extends stdClass implements IteratorAggregate {
     public function delete() {
         global $DB;
 
+        if ($this->_contextlevel <= CONTEXT_SYSTEM) {
+            throw new coding_exception('Cannot delete system context');
+        }
+
         // double check the context still exists
         if (!$DB->record_exists('context', array('id'=>$this->_id))) {
             context::cache_remove($this);
@@ -5558,6 +5668,11 @@ abstract class context extends stdClass implements IteratorAggregate {
     public function get_child_contexts() {
         global $DB;
 
+        if (empty($this->_path) or empty($this->_depth)) {
+            debugging('Can not find child contexts of context '.$this->_id.' try rebuilding of context paths');
+            return array();
+        }
+
         $sql = "SELECT ctx.*
                   FROM {context} ctx
                  WHERE ctx.path LIKE ?";
@@ -5636,7 +5751,7 @@ abstract class context extends stdClass implements IteratorAggregate {
      * Is this context part of any course? If yes return course context.
      *
      * @param bool $strict true means throw exception if not found, false means return false if not found
-     * @return course_context context of the enclosing course, null if not found or exception
+     * @return context_course context of the enclosing course, null if not found or exception
      */
     public function get_course_context($strict = true) {
         if ($strict) {
@@ -5756,7 +5871,7 @@ abstract class context extends stdClass implements IteratorAggregate {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_helper extends context {
 
@@ -5769,6 +5884,13 @@ class context_helper extends context {
      * Instance does not make sense here, only static use
      */
     protected function __construct() {
+    }
+
+    /**
+     * Reset internal context levels array.
+     */
+    public static function reset_levels() {
+        self::$alllevels = null;
     }
 
     /**
@@ -5793,8 +5915,17 @@ class context_helper extends context {
             return;
         }
 
+        $levels = $CFG->custom_context_classes;
+        if (!is_array($levels)) {
+            $levels = @unserialize($levels);
+        }
+        if (!is_array($levels)) {
+            debugging('Invalid $CFG->custom_context_classes detected, value ignored.', DEBUG_DEVELOPER);
+            return;
+        }
+
         // Unsupported custom levels, use with care!!!
-        foreach ($CFG->custom_context_classes as $level => $classname) {
+        foreach ($levels as $level => $classname) {
             self::$alllevels[$level] = $classname;
         }
         ksort(self::$alllevels);
@@ -6016,7 +6147,7 @@ class context_helper extends context {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_system extends context {
     /**
@@ -6091,7 +6222,7 @@ class context_system extends context {
      * Returns system context instance.
      *
      * @static
-     * @param int $instanceid
+     * @param int $instanceid should be 0
      * @param int $strictness
      * @param bool $cache
      * @return context_system context instance
@@ -6257,7 +6388,7 @@ class context_system extends context {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_user extends context {
     /**
@@ -6343,19 +6474,19 @@ class context_user extends context {
      * Returns user context instance.
      *
      * @static
-     * @param int $instanceid
+     * @param int $userid id from {user} table
      * @param int $strictness
      * @return context_user context instance
      */
-    public static function instance($instanceid, $strictness = MUST_EXIST) {
+    public static function instance($userid, $strictness = MUST_EXIST) {
         global $DB;
 
-        if ($context = context::cache_get(CONTEXT_USER, $instanceid)) {
+        if ($context = context::cache_get(CONTEXT_USER, $userid)) {
             return $context;
         }
 
-        if (!$record = $DB->get_record('context', array('contextlevel'=>CONTEXT_USER, 'instanceid'=>$instanceid))) {
-            if ($user = $DB->get_record('user', array('id'=>$instanceid, 'deleted'=>0), 'id', $strictness)) {
+        if (!$record = $DB->get_record('context', array('contextlevel' => CONTEXT_USER, 'instanceid' => $userid))) {
+            if ($user = $DB->get_record('user', array('id' => $userid, 'deleted' => 0), 'id', $strictness)) {
                 $record = context::insert_context_record(CONTEXT_USER, $user->id, '/'.SYSCONTEXTID, 0);
             }
         }
@@ -6376,14 +6507,17 @@ class context_user extends context {
     protected static function create_level_instances() {
         global $DB;
 
-        $sql = "INSERT INTO {context} (contextlevel, instanceid)
-                SELECT ".CONTEXT_USER.", u.id
+        $sql = "SELECT ".CONTEXT_USER.", u.id
                   FROM {user} u
                  WHERE u.deleted = 0
                        AND NOT EXISTS (SELECT 'x'
                                          FROM {context} cx
                                         WHERE u.id = cx.instanceid AND cx.contextlevel=".CONTEXT_USER.")";
-        $DB->execute($sql);
+        $contextdata = $DB->get_recordset_sql($sql);
+        foreach ($contextdata as $context) {
+            context::insert_context_record(CONTEXT_USER, $context->id, null);
+        }
+        $contextdata->close();
     }
 
     /**
@@ -6441,7 +6575,7 @@ class context_user extends context {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_coursecat extends context {
     /**
@@ -6518,19 +6652,19 @@ class context_coursecat extends context {
      * Returns course category context instance.
      *
      * @static
-     * @param int $instanceid
+     * @param int $categoryid id from {course_categories} table
      * @param int $strictness
      * @return context_coursecat context instance
      */
-    public static function instance($instanceid, $strictness = MUST_EXIST) {
+    public static function instance($categoryid, $strictness = MUST_EXIST) {
         global $DB;
 
-        if ($context = context::cache_get(CONTEXT_COURSECAT, $instanceid)) {
+        if ($context = context::cache_get(CONTEXT_COURSECAT, $categoryid)) {
             return $context;
         }
 
-        if (!$record = $DB->get_record('context', array('contextlevel'=>CONTEXT_COURSECAT, 'instanceid'=>$instanceid))) {
-            if ($category = $DB->get_record('course_categories', array('id'=>$instanceid), 'id,parent', $strictness)) {
+        if (!$record = $DB->get_record('context', array('contextlevel' => CONTEXT_COURSECAT, 'instanceid' => $categoryid))) {
+            if ($category = $DB->get_record('course_categories', array('id' => $categoryid), 'id,parent', $strictness)) {
                 if ($category->parent) {
                     $parentcontext = context_coursecat::instance($category->parent);
                     $record = context::insert_context_record(CONTEXT_COURSECAT, $category->id, $parentcontext->path);
@@ -6558,6 +6692,11 @@ class context_coursecat extends context {
     public function get_child_contexts() {
         global $DB;
 
+        if (empty($this->_path) or empty($this->_depth)) {
+            debugging('Can not find child contexts of context '.$this->_id.' try rebuilding of context paths');
+            return array();
+        }
+
         $sql = "SELECT ctx.*
                   FROM {context} ctx
                  WHERE ctx.path LIKE ? AND (ctx.depth = ? OR ctx.contextlevel = ?)";
@@ -6579,13 +6718,16 @@ class context_coursecat extends context {
     protected static function create_level_instances() {
         global $DB;
 
-        $sql = "INSERT INTO {context} (contextlevel, instanceid)
-                SELECT ".CONTEXT_COURSECAT.", cc.id
+        $sql = "SELECT ".CONTEXT_COURSECAT.", cc.id
                   FROM {course_categories} cc
                  WHERE NOT EXISTS (SELECT 'x'
                                      FROM {context} cx
                                     WHERE cc.id = cx.instanceid AND cx.contextlevel=".CONTEXT_COURSECAT.")";
-        $DB->execute($sql);
+        $contextdata = $DB->get_recordset_sql($sql);
+        foreach ($contextdata as $context) {
+            context::insert_context_record(CONTEXT_COURSECAT, $context->id, null);
+        }
+        $contextdata->close();
     }
 
     /**
@@ -6665,7 +6807,7 @@ class context_coursecat extends context {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_course extends context {
     /**
@@ -6754,7 +6896,7 @@ class context_course extends context {
      * Is this context part of any course? If yes return course context.
      *
      * @param bool $strict true means throw exception if not found, false means return false if not found
-     * @return course_context context of the enclosing course, null if not found or exception
+     * @return context_course context of the enclosing course, null if not found or exception
      */
     public function get_course_context($strict = true) {
         return $this;
@@ -6764,19 +6906,19 @@ class context_course extends context {
      * Returns course context instance.
      *
      * @static
-     * @param int $instanceid
+     * @param int $courseid id from {course} table
      * @param int $strictness
      * @return context_course context instance
      */
-    public static function instance($instanceid, $strictness = MUST_EXIST) {
+    public static function instance($courseid, $strictness = MUST_EXIST) {
         global $DB;
 
-        if ($context = context::cache_get(CONTEXT_COURSE, $instanceid)) {
+        if ($context = context::cache_get(CONTEXT_COURSE, $courseid)) {
             return $context;
         }
 
-        if (!$record = $DB->get_record('context', array('contextlevel'=>CONTEXT_COURSE, 'instanceid'=>$instanceid))) {
-            if ($course = $DB->get_record('course', array('id'=>$instanceid), 'id,category', $strictness)) {
+        if (!$record = $DB->get_record('context', array('contextlevel' => CONTEXT_COURSE, 'instanceid' => $courseid))) {
+            if ($course = $DB->get_record('course', array('id' => $courseid), 'id,category', $strictness)) {
                 if ($course->category) {
                     $parentcontext = context_coursecat::instance($course->category);
                     $record = context::insert_context_record(CONTEXT_COURSE, $course->id, $parentcontext->path);
@@ -6802,13 +6944,16 @@ class context_course extends context {
     protected static function create_level_instances() {
         global $DB;
 
-        $sql = "INSERT INTO {context} (contextlevel, instanceid)
-                SELECT ".CONTEXT_COURSE.", c.id
+        $sql = "SELECT ".CONTEXT_COURSE.", c.id
                   FROM {course} c
                  WHERE NOT EXISTS (SELECT 'x'
                                      FROM {context} cx
                                     WHERE c.id = cx.instanceid AND cx.contextlevel=".CONTEXT_COURSE.")";
-        $DB->execute($sql);
+        $contextdata = $DB->get_recordset_sql($sql);
+        foreach ($contextdata as $context) {
+            context::insert_context_record(CONTEXT_COURSE, $context->id, null);
+        }
+        $contextdata->close();
     }
 
     /**
@@ -6884,7 +7029,7 @@ class context_course extends context {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_module extends context {
     /**
@@ -7022,19 +7167,19 @@ class context_module extends context {
      * Returns module context instance.
      *
      * @static
-     * @param int $instanceid
+     * @param int $cmid id of the record from {course_modules} table; pass cmid there, NOT id in the instance column
      * @param int $strictness
      * @return context_module context instance
      */
-    public static function instance($instanceid, $strictness = MUST_EXIST) {
+    public static function instance($cmid, $strictness = MUST_EXIST) {
         global $DB;
 
-        if ($context = context::cache_get(CONTEXT_MODULE, $instanceid)) {
+        if ($context = context::cache_get(CONTEXT_MODULE, $cmid)) {
             return $context;
         }
 
-        if (!$record = $DB->get_record('context', array('contextlevel'=>CONTEXT_MODULE, 'instanceid'=>$instanceid))) {
-            if ($cm = $DB->get_record('course_modules', array('id'=>$instanceid), 'id,course', $strictness)) {
+        if (!$record = $DB->get_record('context', array('contextlevel' => CONTEXT_MODULE, 'instanceid' => $cmid))) {
+            if ($cm = $DB->get_record('course_modules', array('id' => $cmid), 'id,course', $strictness)) {
                 $parentcontext = context_course::instance($cm->course);
                 $record = context::insert_context_record(CONTEXT_MODULE, $cm->id, $parentcontext->path);
             }
@@ -7056,13 +7201,16 @@ class context_module extends context {
     protected static function create_level_instances() {
         global $DB;
 
-        $sql = "INSERT INTO {context} (contextlevel, instanceid)
-                SELECT ".CONTEXT_MODULE.", cm.id
+        $sql = "SELECT ".CONTEXT_MODULE.", cm.id
                   FROM {course_modules} cm
                  WHERE NOT EXISTS (SELECT 'x'
                                      FROM {context} cx
                                     WHERE cm.id = cx.instanceid AND cx.contextlevel=".CONTEXT_MODULE.")";
-        $DB->execute($sql);
+        $contextdata = $DB->get_recordset_sql($sql);
+        foreach ($contextdata as $context) {
+            context::insert_context_record(CONTEXT_MODULE, $context->id, null);
+        }
+        $contextdata->close();
     }
 
     /**
@@ -7123,7 +7271,7 @@ class context_module extends context {
  * @category  access
  * @copyright Petr Skoda {@link http://skodak.org}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @since     2.2
+ * @since     Moodle 2.2
  */
 class context_block extends context {
     /**
@@ -7220,7 +7368,7 @@ class context_block extends context {
      * Is this context part of any course? If yes return course context.
      *
      * @param bool $strict true means throw exception if not found, false means return false if not found
-     * @return course_context context of the enclosing course, null if not found or exception
+     * @return context_course context of the enclosing course, null if not found or exception
      */
     public function get_course_context($strict = true) {
         $parentcontext = $this->get_parent_context();
@@ -7231,19 +7379,19 @@ class context_block extends context {
      * Returns block context instance.
      *
      * @static
-     * @param int $instanceid
+     * @param int $blockinstanceid id from {block_instances} table.
      * @param int $strictness
      * @return context_block context instance
      */
-    public static function instance($instanceid, $strictness = MUST_EXIST) {
+    public static function instance($blockinstanceid, $strictness = MUST_EXIST) {
         global $DB;
 
-        if ($context = context::cache_get(CONTEXT_BLOCK, $instanceid)) {
+        if ($context = context::cache_get(CONTEXT_BLOCK, $blockinstanceid)) {
             return $context;
         }
 
-        if (!$record = $DB->get_record('context', array('contextlevel'=>CONTEXT_BLOCK, 'instanceid'=>$instanceid))) {
-            if ($bi = $DB->get_record('block_instances', array('id'=>$instanceid), 'id,parentcontextid', $strictness)) {
+        if (!$record = $DB->get_record('context', array('contextlevel' => CONTEXT_BLOCK, 'instanceid' => $blockinstanceid))) {
+            if ($bi = $DB->get_record('block_instances', array('id' => $blockinstanceid), 'id,parentcontextid', $strictness)) {
                 $parentcontext = context::instance_by_id($bi->parentcontextid);
                 $record = context::insert_context_record(CONTEXT_BLOCK, $bi->id, $parentcontext->path);
             }
@@ -7273,13 +7421,16 @@ class context_block extends context {
     protected static function create_level_instances() {
         global $DB;
 
-        $sql = "INSERT INTO {context} (contextlevel, instanceid)
-                SELECT ".CONTEXT_BLOCK.", bi.id
+        $sql = "SELECT ".CONTEXT_BLOCK.", bi.id
                   FROM {block_instances} bi
                  WHERE NOT EXISTS (SELECT 'x'
                                      FROM {context} cx
                                     WHERE bi.id = cx.instanceid AND cx.contextlevel=".CONTEXT_BLOCK.")";
-        $DB->execute($sql);
+        $contextdata = $DB->get_recordset_sql($sql);
+        foreach ($contextdata as $context) {
+            context::insert_context_record(CONTEXT_BLOCK, $context->id, null);
+        }
+        $contextdata->close();
     }
 
     /**
@@ -7409,26 +7560,34 @@ function extract_suspended_users($context, &$users, $ignoreusers=array()) {
  * or enrolment has expired or not started.
  *
  * @param context $context context in which user enrolment is checked.
+ * @param bool $usecache Enable or disable (default) the request cache
  * @return array list of suspended user id's.
  */
-function get_suspended_userids($context){
+function get_suspended_userids(context $context, $usecache = false) {
     global $DB;
 
-    // Get all enrolled users.
-    list($sql, $params) = get_enrolled_sql($context);
-    $users = $DB->get_records_sql($sql, $params);
-
-    // Get active enrolled users.
-    list($sql, $params) = get_enrolled_sql($context, null, null, true);
-    $activeusers = $DB->get_records_sql($sql, $params);
-
-    $susers = array();
-    if (sizeof($activeusers) != sizeof($users)) {
-        foreach ($users as $userid => $user) {
-            if (!array_key_exists($userid, $activeusers)) {
-                $susers[$userid] = $userid;
-            }
+    if ($usecache) {
+        $cache = cache::make('core', 'suspended_userids');
+        $susers = $cache->get($context->id);
+        if ($susers !== false) {
+            return $susers;
         }
     }
+
+    $coursecontext = $context->get_course_context();
+    $susers = array();
+
+    // Front page users are always enrolled, so suspended list is empty.
+    if ($coursecontext->instanceid != SITEID) {
+        list($sql, $params) = get_enrolled_sql($context, null, null, false, true);
+        $susers = $DB->get_fieldset_sql($sql, $params);
+        $susers = array_combine($susers, $susers);
+    }
+
+    // Cache results for the remainder of this request.
+    if ($usecache) {
+        $cache->set($context->id, $susers);
+    }
+
     return $susers;
 }

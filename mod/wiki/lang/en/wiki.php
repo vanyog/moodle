@@ -7,7 +7,7 @@
  * @author Kenneth Riba
  *
  * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
- * @package wiki
+ * @package mod_wiki
  */
 $string['addcomment'] = 'Add comment';
 $string['admin'] = 'Administration';
@@ -22,6 +22,7 @@ $string['backoldversion'] = 'Back to old version';
 $string['backpage'] = 'Back to page';
 $string['backtomapmenu'] = 'Back to map menu';
 $string['changerate'] = 'Do you wish to change it?';
+$string['cannotcomparenewerversion'] = 'A page version can only be compared with an older version.';
 $string['cannoteditpage'] = 'You can not edit this page.';
 $string['cannotmanagefiles'] = 'You don\'t have permission to manage the wiki files.';
 $string['cannotviewfiles'] = 'You don\'t have permission to view the wiki files.';
@@ -43,6 +44,7 @@ $string['defaultformat_help'] = 'This setting determines the default format used
 * HTML - The HTML editor is available
 * Creole - A common wiki markup language for which a small edit toolbar is available
 * Nwiki - Mediawiki-like markup language used in the contributed Nwiki module';
+$string['deleteallpages'] = 'Delete all wiki pages';
 $string['deletecomment'] = 'Deleting comment';
 $string['deletecommentcheck'] = 'Delete comment';
 $string['deletecommentcheckfull'] = 'Are you sure you want to delete the comment?';
@@ -62,6 +64,17 @@ $string['editing'] = 'Editing wiki page';
 $string['editingcomment'] = 'Editing comment';
 $string['editingpage'] = 'Editing this page \'{$a}\'';
 $string['editsection'] = 'edit';
+$string['eventdiffviewed'] = 'Wiki diff viewed';
+$string['eventhistoryviewed'] = 'Wiki history viewed';
+$string['eventmapviewed'] = 'Wiki page map viewed';
+$string['eventpagedeleted'] = 'Wiki page deleted';
+$string['eventpagecreated'] = 'Wiki page created';
+$string['eventpagelocksdeleted'] = 'Wiki page locks deleted';
+$string['eventpageviewed'] = 'Wiki page viewed';
+$string['eventpageupdated'] = 'Wiki page updated';
+$string['eventpageversiondeleted'] = 'Wiki page version deleted';
+$string['eventversionrestored'] = 'Wiki version restored';
+$string['eventversionviewed'] = 'Wiki page version viewed';
 $string['files'] = 'Files';
 $string['filenotuploadederror'] = 'File \'{$a}\' could not be uploaded correctly.';
 $string['filtername'] = 'Wiki auto-linking';
@@ -91,6 +104,9 @@ $string['history'] = 'History';
 $string['history_help'] = 'The history lists links to previous versions of the page.';
 $string['html'] = 'HTML';
 $string['incorrectdeleteversions'] = "Page versions provided for deletion are incorrect.";
+$string['incorrectpageid'] = 'Page ID is incorrect.';
+$string['incorrectsubwikiid'] = 'Subwiki ID is incorrect.';
+$string['incorrectwikiid'] = 'Wiki ID is incorrect.';
 $string['insertcomment'] = 'Insert comment';
 $string['insertimage'] = 'Insert an image...';
 $string['insertimage_help'] = 'This drop-down list will insert an image to the wiki editor. If you need to add more images to the wiki, please use "Files" tab.';
@@ -197,12 +213,14 @@ $string['return'] = 'Go back';
 $string['save'] = 'Save';
 $string['saving'] = 'Saving wiki page';
 $string['savingerror'] = 'Saving error';
+$string['search:activity'] = 'Wiki activities';
 $string['searchcontent'] = 'Search in page content';
 $string['searchresult'] = 'Search results:';
 $string['searchterms'] = 'Search terms';
 $string['searchwikis'] = 'Search wikis';
 $string['special'] = 'Special';
 $string['tableofcontents'] = 'Table of contents';
+$string['tagarea_wiki_pages'] = 'Wiki pages';
 $string['tagsdeleted'] = 'Wiki tags have been deleted';
 $string['tagtitle'] = 'See the "{$a}" tag';
 $string['teacherrating'] = 'Teacher rating';

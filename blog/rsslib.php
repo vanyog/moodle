@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -36,7 +35,7 @@ require_once($CFG->dirroot .'/blog/lib.php');
  * @param int    $tagid        The id of the row in the tag table that identifies the RSS Feed
  * @return string
  */
-function blog_rss_get_url($contextid, $userid, $filtertype, $filterselect=0, $tagid=0) {
+function blog_rss_get_url($contextid, $userid, $filtertype, $filterselect = 0, $tagid = 0) {
     $componentname = 'blog';
 
     $additionalargs = null;
@@ -71,7 +70,7 @@ function blog_rss_get_url($contextid, $userid, $filtertype, $filterselect=0, $ta
  * @param int         $tagid        The id of the row in the tag table that identifies the RSS Feed
  * @param string      $tooltiptext  The tooltip to be displayed with the link
  */
-function blog_rss_print_link($context, $filtertype, $filterselect=0, $tagid=0, $tooltiptext='') {
+function blog_rss_print_link($context, $filtertype, $filterselect = 0, $tagid = 0, $tooltiptext = '') {
     global $CFG, $USER, $OUTPUT;
 
     if (!isloggedin()) {
@@ -94,11 +93,8 @@ function blog_rss_print_link($context, $filtertype, $filterselect=0, $tagid=0, $
  * @param int         $filterselect The id of the item defined by $filtertype
  * @param int         $tagid        The id of the row in the tag table that identifies the RSS Feed
  */
-function blog_rss_add_http_header($context, $title, $filtertype, $filterselect=0, $tagid=0) {
+function blog_rss_add_http_header($context, $title, $filtertype, $filterselect = 0, $tagid = 0) {
     global $PAGE, $USER, $CFG;
-
-    //$componentname = 'blog';
-    //rss_add_http_header($context, $componentname, $filterselect, $title);
 
     if (!isloggedin()) {
         $userid = $CFG->siteguest;
@@ -159,7 +155,7 @@ function blog_rss_get_feed($context, $args) {
 
     if ($CFG->bloglevel == BLOG_SITE_LEVEL) {
         if (isguestuser()) {
-            debugging(get_string('nopermissiontoshow','error'));
+            debugging(get_string('nopermissiontoshow', 'error'));
             return '';
         }
     }
@@ -170,9 +166,9 @@ function blog_rss_get_feed($context, $args) {
     }
 
     $type  = clean_param($args[3], PARAM_ALPHA);
-    $id = clean_param($args[4], PARAM_INT);  // could be groupid / courseid  / userid  depending on $type
+    $id = clean_param($args[4], PARAM_INT);  // Could be groupid / courseid  / userid  depending on $type.
 
-    $tagid=0;
+    $tagid = 0;
     if ($args[5] != 'rss.xml') {
         $tagid = clean_param($args[5], PARAM_INT);
     } else {
@@ -183,14 +179,13 @@ function blog_rss_get_feed($context, $args) {
 
     if (file_exists($filename)) {
         if (filemtime($filename) + 3600 > time()) {
-            return $filename;   // It's already done so we return cached version
+            return $filename;   // It's already done so we return cached version.
         }
     }
 
     $courseid = $groupid = $userid = null;
     switch ($type) {
         case 'site':
-            //$siteid = $id;
             break;
         case 'course':
             $courseid = $id;
@@ -203,46 +198,44 @@ function blog_rss_get_feed($context, $args) {
             break;
     }
 
-    // Get all the entries from the database
+    // Get all the entries from the database.
     require_once($CFG->dirroot .'/blog/locallib.php');
     $blogheaders = blog_get_headers($courseid, $groupid, $userid, $tagid);
 
     $bloglisting = new blog_listing($blogheaders['filters']);
     $blogentries = $bloglisting->get_entries();
 
-    // Now generate an array of RSS items
+    // Now generate an array of RSS items.
     if ($blogentries) {
         $items = array();
-        foreach ($blogentries as $blog_entry) {
-            $item = NULL;
-            $item->author = fullname($DB->get_record('user', array('id'=>$blog_entry->userid))); // TODO: this is slow
-            $item->title = $blog_entry->subject;
-            $item->pubdate = $blog_entry->lastmodified;
-            $item->link = $CFG->wwwroot.'/blog/index.php?entryid='.$blog_entry->id;
-            $summary = file_rewrite_pluginfile_urls($blog_entry->summary, 'pluginfile.php',
-                $sitecontext->id, 'blog', 'post', $blog_entry->id);
-            $item->description = format_text($summary, $blog_entry->format);
-            if ( !empty($CFG->usetags) && ($blogtags = tag_get_tags_array('post', $blog_entry->id)) ) {
-                if ($blogtags) {
-                    $item->tags = $blogtags;
-                }
+        foreach ($blogentries as $blogentry) {
+            $item = null;
+            $item->author = fullname($DB->get_record('user', array('id' => $blogentry->userid))); // TODO: this is slow.
+            $item->title = $blogentry->subject;
+            $item->pubdate = $blogentry->lastmodified;
+            $item->link = $CFG->wwwroot.'/blog/index.php?entryid='.$blogentry->id;
+            $summary = file_rewrite_pluginfile_urls($blogentry->summary, 'pluginfile.php',
+                $sitecontext->id, 'blog', 'post', $blogentry->id);
+            $item->description = format_text($summary, $blogentry->format);
+            if ($blogtags = core_tag_tag::get_item_tags_array('core', 'post', $blogentry->id)) {
+                $item->tags = $blogtags;
                 $item->tagscheme = $CFG->wwwroot . '/tag';
             }
             $items[] = $item;
         }
-        $articles = rss_add_items($items);   /// Change structure to XML
+        $articles = rss_add_items($items);   // Change structure to XML.
     } else {
         $articles = '';
     }
 
-/// Get header and footer information
+    // Get header and footer information.
 
     switch ($type) {
         case 'user':
-            $info = fullname($DB->get_record('user', array('id'=>$id), 'firstname,lastname'));
+            $info = fullname($DB->get_record('user', array('id' => $id), 'firstname,lastname'));
             break;
         case 'course':
-            $info = $DB->get_field('course', 'fullname', array('id'=>$id));
+            $info = $DB->get_field('course', 'fullname', array('id' => $id));
             $info = format_string($info, true, array('context' => context_course::instance($id)));
             break;
         case 'site':
@@ -250,7 +243,7 @@ function blog_rss_get_feed($context, $args) {
             break;
         case 'group':
             $group = groups_get_group($id);
-            $info = $group->name; //TODO: $DB->get_field('groups', 'name', array('id'=>$id))
+            $info = $group->name; // TODO: $DB->get_field('groups', 'name', array('id' => $id)).
             break;
         default:
             $info = '';
@@ -258,21 +251,21 @@ function blog_rss_get_feed($context, $args) {
     }
 
     if ($tagid) {
-        $info .= ': '.$DB->get_field('tags', 'text', array('id'=>$tagid));
+        $info .= ': '.$DB->get_field('tags', 'text', array('id' => $tagid));
     }
 
-    $header = rss_standard_header(get_string($type.'blog','blog', $info),
+    $header = rss_standard_header(get_string($type.'blog', 'blog', $info),
                                   $CFG->wwwroot.'/blog/index.php',
-                                  get_string('intro','blog'));
+                                  get_string('intro', 'blog'));
 
     $footer = rss_standard_footer();
 
     // Save the XML contents to file.
     $rssdata = $header.$articles.$footer;
-    if (blog_rss_save_file($type,$id,$tagid,$rssdata)) {
+    if (blog_rss_save_file($type, $id, $tagid, $rssdata)) {
         return $filename;
     } else {
-        return false;   // Couldn't find it or make it
+        return false;   // Couldn't find it or make it.
     }
 }
 
@@ -284,7 +277,7 @@ function blog_rss_get_feed($context, $args) {
  * @param int    $tagid The id of the row in the tag table that identifies the RSS Feed
  * @return string
  */
-function blog_rss_file_name($type, $id, $tagid=0) {
+function blog_rss_file_name($type, $id, $tagid = 0) {
     global $CFG;
 
     if ($tagid) {
@@ -303,19 +296,33 @@ function blog_rss_file_name($type, $id, $tagid=0) {
  * @param string $contents The contents of the RSS Feed file
  * @return bool whether the save was successful or not
  */
-function blog_rss_save_file($type, $id, $tagid=0, $contents='') {
+function blog_rss_save_file($type, $id, $tagid = 0, $contents = '') {
     global $CFG;
 
     $status = true;
 
-    //blog creates some additional dirs within the rss cache so make sure they all exist
+    // Blog creates some additional dirs within the rss cache so make sure they all exist.
     make_cache_directory('rss/blog');
     make_cache_directory('rss/blog/'.$type);
 
     $filename = blog_rss_file_name($type, $id, $tagid);
-    $expandfilename = false; //we're supplying a full file path
+    $expandfilename = false; // We are supplying a full file path.
     $status = rss_save_file('blog', $filename, $contents, $expandfilename);
 
     return $status;
+}
+
+/**
+ * Delete the supplied user's cached blog post RSS feed.
+ * Only user blogs are available by RSS.
+ * This doesn't call rss_delete_file() as blog RSS caching uses it's own file structure.
+ *
+ * @param int $userid
+ */
+function blog_rss_delete_file($userid) {
+    $filename = blog_rss_file_name('user', $userid);
+    if (file_exists($filename)) {
+        unlink($filename);
+    }
 }
 

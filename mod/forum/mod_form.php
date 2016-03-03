@@ -16,7 +16,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @package mod-forum
+ * @package   mod_forum
  * @copyright Jamie Pratt <me@jamiep.org>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -46,7 +46,7 @@ class mod_forum_mod_form extends moodleform_mod {
         $mform->addRule('name', null, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
 
-        $this->add_intro_editor(true, get_string('forumintro', 'forum'));
+        $this->standard_intro_elements(get_string('forumintro', 'forum'));
 
         $forumtypes = forum_get_forum_types();
         core_collator::asort($forumtypes, core_collator::SORT_STRING);
@@ -63,7 +63,22 @@ class mod_forum_mod_form extends moodleform_mod {
         $mform->addHelpButton('maxbytes', 'maxattachmentsize', 'forum');
         $mform->setDefault('maxbytes', $CFG->forum_maxbytes);
 
-        $choices = array(0,1,2,3,4,5,6,7,8,9,10,20,50,100);
+        $choices = array(
+            0 => 0,
+            1 => 1,
+            2 => 2,
+            3 => 3,
+            4 => 4,
+            5 => 5,
+            6 => 6,
+            7 => 7,
+            8 => 8,
+            9 => 9,
+            10 => 10,
+            20 => 20,
+            50 => 50,
+            100 => 100
+        );
         $mform->addElement('select', 'maxattachments', get_string('maxattachments', 'forum'), $choices);
         $mform->addHelpButton('maxattachments', 'maxattachments', 'forum');
         $mform->setDefault('maxattachments', $CFG->forum_maxattachments);
@@ -86,9 +101,16 @@ class mod_forum_mod_form extends moodleform_mod {
         $options = array();
         $options[FORUM_TRACKING_OPTIONAL] = get_string('trackingoptional', 'forum');
         $options[FORUM_TRACKING_OFF] = get_string('trackingoff', 'forum');
-        $options[FORUM_TRACKING_ON] = get_string('trackingon', 'forum');
+        if ($CFG->forum_allowforcedreadtracking) {
+            $options[FORUM_TRACKING_FORCED] = get_string('trackingon', 'forum');
+        }
         $mform->addElement('select', 'trackingtype', get_string('trackingtype', 'forum'), $options);
         $mform->addHelpButton('trackingtype', 'trackingtype', 'forum');
+        $default = $CFG->forum_trackingtype;
+        if ((!$CFG->forum_allowforcedreadtracking) && ($default == FORUM_TRACKING_FORCED)) {
+            $default = FORUM_TRACKING_OPTIONAL;
+        }
+        $mform->setDefault('trackingtype', $default);
 
         if ($CFG->enablerssfeeds && isset($CFG->forum_enablerssfeeds) && $CFG->forum_enablerssfeeds) {
 //-------------------------------------------------------------------------------
@@ -99,6 +121,9 @@ class mod_forum_mod_form extends moodleform_mod {
             $choices[2] = get_string('posts', 'forum');
             $mform->addElement('select', 'rsstype', get_string('rsstype'), $choices);
             $mform->addHelpButton('rsstype', 'rsstype', 'forum');
+            if (isset($CFG->forum_rsstype)) {
+                $mform->setDefault('rsstype', $CFG->forum_rsstype);
+            }
 
             $choices = array();
             $choices[0] = '0';
@@ -117,6 +142,9 @@ class mod_forum_mod_form extends moodleform_mod {
             $mform->addElement('select', 'rssarticles', get_string('rssarticles'), $choices);
             $mform->addHelpButton('rssarticles', 'rssarticles', 'forum');
             $mform->disabledIf('rssarticles', 'rsstype', 'eq', '0');
+            if (isset($CFG->forum_rssarticles)) {
+                $mform->setDefault('rssarticles', $CFG->forum_rssarticles);
+            }
         }
 
 //-------------------------------------------------------------------------------

@@ -51,6 +51,8 @@ class core_formslib_testcase extends advanced_testcase {
         $this->assertTrue($rule->validate("Something\nmore"));
         $this->assertTrue($rule->validate("\nmore"));
         $this->assertTrue($rule->validate(" more "));
+        $this->assertTrue($rule->validate('ш'));
+        $this->assertTrue($rule->validate("の"));
         $this->assertTrue($rule->validate("0"));
         $this->assertTrue($rule->validate(0));
         $this->assertTrue($rule->validate(true));
@@ -88,6 +90,8 @@ class core_formslib_testcase extends advanced_testcase {
         $this->assertTrue($rule->validate("\nmore"));
         $this->assertTrue($rule->validate(" more "));
         $this->assertTrue($rule->validate("0"));
+        $this->assertTrue($rule->validate('ш'));
+        $this->assertTrue($rule->validate("の"));
         $this->assertTrue($rule->validate(0));
         $this->assertTrue($rule->validate(true));
         $this->assertTrue($rule->validate('<p>x</p>'));
@@ -115,6 +119,89 @@ class core_formslib_testcase extends advanced_testcase {
         $this->assertFalse($rule->validate(''));
         $this->assertFalse($rule->validate(false));
         $this->assertFalse($rule->validate(null));
+
+        if (isset($strictformsrequired)) {
+            $CFG->strictformsrequired = $strictformsrequired;
+        }
+    }
+
+    public function test_range_rule() {
+        global $CFG;
+
+        require_once('HTML/QuickForm/Rule/Range.php'); // Requires this pear stuff.
+
+        $strictformsrequired = null;
+        if (isset($CFG->strictformsrequired)) {
+            $strictformsrequired = $CFG->strictformsrequired;
+        }
+
+        $rule = new HTML_QuickForm_Rule_Range();
+
+        // First run the tests with strictformsrequired off.
+        $CFG->strictformsrequired = false;
+        // Passes.
+        $rule->setName('minlength'); // Let's verify some min lengths.
+        $this->assertTrue($rule->validate('12', 2));
+        $this->assertTrue($rule->validate('123', 2));
+        $this->assertTrue($rule->validate('áé', 2));
+        $this->assertTrue($rule->validate('áéí', 2));
+        $rule->setName('maxlength'); // Let's verify some max lengths.
+        $this->assertTrue($rule->validate('1', 2));
+        $this->assertTrue($rule->validate('12', 2));
+        $this->assertTrue($rule->validate('á', 2));
+        $this->assertTrue($rule->validate('áé', 2));
+        $rule->setName('----'); // Let's verify some ranges.
+        $this->assertTrue($rule->validate('', array(0, 2)));
+        $this->assertTrue($rule->validate('1', array(0, 2)));
+        $this->assertTrue($rule->validate('12', array(0, 2)));
+        $this->assertTrue($rule->validate('á', array(0, 2)));
+        $this->assertTrue($rule->validate('áé', array(0, 2)));
+
+        // Fail.
+        $rule->setName('minlength'); // Let's verify some min lengths.
+        $this->assertFalse($rule->validate('', 2));
+        $this->assertFalse($rule->validate('1', 2));
+        $this->assertFalse($rule->validate('á', 2));
+        $rule->setName('maxlength'); // Let's verify some max lengths.
+        $this->assertFalse($rule->validate('123', 2));
+        $this->assertFalse($rule->validate('áéí', 2));
+        $rule->setName('----'); // Let's verify some ranges.
+        $this->assertFalse($rule->validate('', array(1, 2)));
+        $this->assertFalse($rule->validate('123', array(1, 2)));
+        $this->assertFalse($rule->validate('áéí', array(1, 2)));
+
+        // Now run the same tests with it on to make sure things work as expected.
+        $CFG->strictformsrequired = true;
+        // Passes.
+        $rule->setName('minlength'); // Let's verify some min lengths.
+        $this->assertTrue($rule->validate('12', 2));
+        $this->assertTrue($rule->validate('123', 2));
+        $this->assertTrue($rule->validate('áé', 2));
+        $this->assertTrue($rule->validate('áéí', 2));
+        $rule->setName('maxlength'); // Let's verify some min lengths.
+        $this->assertTrue($rule->validate('1', 2));
+        $this->assertTrue($rule->validate('12', 2));
+        $this->assertTrue($rule->validate('á', 2));
+        $this->assertTrue($rule->validate('áé', 2));
+        $rule->setName('----'); // Let's verify some ranges.
+        $this->assertTrue($rule->validate('', array(0, 2)));
+        $this->assertTrue($rule->validate('1', array(0, 2)));
+        $this->assertTrue($rule->validate('12', array(0, 2)));
+        $this->assertTrue($rule->validate('á', array(0, 2)));
+        $this->assertTrue($rule->validate('áé', array(0, 2)));
+
+        // Fail.
+        $rule->setName('minlength'); // Let's verify some min lengths.
+        $this->assertFalse($rule->validate('', 2));
+        $this->assertFalse($rule->validate('1', 2));
+        $this->assertFalse($rule->validate('á', 2));
+        $rule->setName('maxlength'); // Let's verify some min lengths.
+        $this->assertFalse($rule->validate('123', 2));
+        $this->assertFalse($rule->validate('áéí', 2));
+        $rule->setName('----'); // Let's verify some ranges.
+        $this->assertFalse($rule->validate('', array(1, 2)));
+        $this->assertFalse($rule->validate('123', array(1, 2)));
+        $this->assertFalse($rule->validate('áéí', array(1, 2)));
 
         if (isset($strictformsrequired)) {
             $CFG->strictformsrequired = $strictformsrequired;
@@ -463,6 +550,62 @@ class core_formslib_testcase extends advanced_testcase {
         $data = $mform->get_data();
         $this->assertSame($expectedvalues, (array) $data);
     }
+
+    /**
+     * MDL-52873
+     */
+    public function test_multiple_modgrade_fields() {
+        $this->resetAfterTest(true);
+
+        $form = new formslib_multiple_modgrade_form();
+        ob_start();
+        $form->display();
+        $html = ob_get_clean();
+
+        $this->assertTag(array('id' => 'fgroup_id_grade1'), $html);
+        $this->assertTag(array('id' => 'id_grade1_modgrade_type'), $html);
+        $this->assertTag(array('id' => 'id_grade1_modgrade_point'), $html);
+        $this->assertTag(array('id' => 'id_grade1_modgrade_scale'), $html);
+
+        $this->assertTag(array('id' => 'fgroup_id_grade2'), $html);
+        $this->assertTag(array('id' => 'id_grade2_modgrade_type'), $html);
+        $this->assertTag(array('id' => 'id_grade2_modgrade_point'), $html);
+        $this->assertTag(array('id' => 'id_grade2_modgrade_scale'), $html);
+
+        $this->assertTag(array('id' => 'fgroup_id_grade_3'), $html);
+        $this->assertTag(array('id' => 'id_grade_3_modgrade_type'), $html);
+        $this->assertTag(array('id' => 'id_grade_3_modgrade_point'), $html);
+        $this->assertTag(array('id' => 'id_grade_3_modgrade_scale'), $html);
+    }
+
+    /**
+     * Test persistant freeze elements have different id's.
+     */
+    public function test_persistantrreeze_element() {
+        $this->resetAfterTest(true);
+
+        $form = new formslib_persistantrreeze_element();
+        ob_start();
+        $form->display();
+        $html = ob_get_clean();
+
+        // Test advcheckbox id's.
+        $this->assertTag(array('id' => 'id_advcheckboxpersistant'), $html);
+        $this->assertTag(array('id' => 'id_advcheckboxpersistant_persistant'), $html);
+        $this->assertTag(array('id' => 'id_advcheckboxnotpersistant'), $html);
+        $this->assertNotTag(array('id' => 'id_advcheckboxnotpersistant_persistant'), $html);
+        $this->assertTag(array('id' => 'id_advcheckboxfrozen'), $html);
+        $this->assertTag(array('id' => 'id_advcheckboxfrozen_persistant'), $html);
+
+        // Check text element id's.
+        $this->assertTag(array('id' => 'id_textpersistant'), $html);
+        $this->assertTag(array('id' => 'id_textpersistant_persistant'), $html);
+        $this->assertTag(array('id' => 'id_textnotpersistant'), $html);
+        $this->assertNotTag(array('id' => 'id_textnotpersistant_persistant'), $html);
+        $this->assertTag(array('id' => 'id_textfrozen'), $html);
+        $this->assertNotTag(array('id' => 'id_textfrozen_persistant'), $html);
+
+    }
 }
 
 
@@ -733,5 +876,56 @@ class formslib_clean_value extends moodleform {
         $group = $mform->createElement('group', 'repeatnamedgroup', 'repeatnamedgroup', $groupelements, null, true);
         $this->repeat_elements(array($group), 2, array('repeatnamedgroup[repeatnamedgroupel1]' => array('type' => PARAM_INT),
             'repeatnamedgroup[repeatnamedgroupel2]' => array('type' => PARAM_INT)), 'repeatablenamedgroup', 'add', 0);
+    }
+}
+
+/**
+ * Used to test that modgrade fields get unique id attributes.
+ */
+class formslib_multiple_modgrade_form extends moodleform {
+    public function definition() {
+        $mform = $this->_form;
+        $mform->addElement('modgrade', 'grade1', 'Grade 1');
+        $mform->addElement('modgrade', 'grade2', 'Grade 2');
+        $mform->addElement('modgrade', 'grade[3]', 'Grade 3');
+    }
+}
+
+/**
+ * Used to test frozen elements get unique id attributes.
+ */
+class formslib_persistantrreeze_element extends moodleform {
+    public function definition() {
+        $mform = $this->_form;
+
+        // Create advanced checkbox.
+        // Persistant.
+        $advcheckboxpersistant = $mform->addElement('advcheckbox', 'advcheckboxpersistant', 'advcheckbox');
+        $mform->setType('advcheckboxpersistant', PARAM_BOOL);
+        $advcheckboxpersistant->setChecked(true);
+        $advcheckboxpersistant->freeze();
+        $advcheckboxpersistant->setPersistantFreeze(true);
+        // Frozen.
+        $advcheckboxfrozen = $mform->addElement('advcheckbox', 'advcheckboxfrozen', 'advcheckbox');
+        $mform->setType('advcheckboxfrozen', PARAM_BOOL);
+        $advcheckboxfrozen->setChecked(true);
+        $advcheckboxfrozen->freeze();
+        // Neither persistant nor Frozen.
+        $mform->addElement('advcheckbox', 'advcheckboxnotpersistant', 'advcheckbox');
+        $mform->setType('advcheckboxnotpersistant', PARAM_BOOL);
+
+        // Create text fields.
+        // Persistant.
+        $elpersistant = $mform->addElement('text', 'textpersistant', 'test', 'test');
+        $mform->setType('textpersistant', PARAM_TEXT);
+        $elpersistant->freeze();
+        $elpersistant->setPersistantFreeze(true);
+        // Frozen.
+        $elfrozen = $mform->addElement('text', 'textfrozen', 'test', 'test');
+        $mform->setType('textfrozen', PARAM_TEXT);
+        $elfrozen->freeze();
+        // Neither persistant nor Frozen.
+        $mform->addElement('text', 'textnotpersistant', 'test', 'test');
+        $mform->setType('textnotpersistant', PARAM_TEXT);
     }
 }

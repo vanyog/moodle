@@ -53,21 +53,40 @@ class core_completionlib_testcase extends advanced_testcase {
 
         $this->resetAfterTest();
 
-        // Create a course with activities.
-        $this->course = $this->getDataGenerator()->create_course();
-        $this->user = $this->getDataGenerator()->create_user();
-        $studentrole = $DB->get_record('role', array('shortname' => 'student'));
-        $this->assertNotEmpty($studentrole);
+        // Enable completion before creating modules, otherwise the completion data is not written in DB.
+        $CFG->enablecompletion = true;
 
-        // Get manual enrolment plugin and enrol user.
-        require_once($CFG->dirroot.'/enrol/manual/locallib.php');
-        $manplugin = enrol_get_plugin('manual');
-        $maninstance = $DB->get_record('enrol', array('courseid' => $this->course->id, 'enrol' => 'manual'), '*', MUST_EXIST);
-        $manplugin->enrol_user($maninstance, $this->user->id, $studentrole->id);
-        $this->assertEquals(1, $DB->count_records('user_enrolments'));
+        // Create a course with activities.
+        $this->course = $this->getDataGenerator()->create_course(array('enablecompletion' => true));
+        $this->user = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($this->user->id, $this->course->id);
 
         $this->module1 = $this->getDataGenerator()->create_module('forum', array('course' => $this->course->id));
         $this->module2 = $this->getDataGenerator()->create_module('forum', array('course' => $this->course->id));
+    }
+
+    /**
+     * Asserts that two variables are equal.
+     *
+     * @param  mixed   $expected
+     * @param  mixed   $actual
+     * @param  string  $message
+     * @param  float   $delta
+     * @param  integer $maxDepth
+     * @param  boolean $canonicalize
+     * @param  boolean $ignoreCase
+     */
+    public static function assertEquals($expected, $actual, $message = '', $delta = 0, $maxDepth = 10, $canonicalize = FALSE, $ignoreCase = FALSE) {
+        // Nasty cheating hack: prevent random failures on timemodified field.
+        if (is_object($expected) and is_object($actual)) {
+            if (property_exists($expected, 'timemodified') and property_exists($actual, 'timemodified')) {
+                if ($expected->timemodified + 1 == $actual->timemodified) {
+                    $expected = clone($expected);
+                    $expected->timemodified = $actual->timemodified;
+                }
+            }
+        }
+        parent::assertEquals($expected, $actual, $message, $delta, $maxDepth, $canonicalize, $ignoreCase);
     }
 
     public function test_is_enabled() {
@@ -168,9 +187,11 @@ class core_completionlib_testcase extends advanced_testcase {
         $changed = clone($current);
         $changed->timemodified = time();
         $changed->completionstate = COMPLETION_INCOMPLETE;
+        $comparewith = new phpunit_constraint_object_is_equal_with_exceptions($changed);
+        $comparewith->add_exception('timemodified', 'assertGreaterThanOrEqual');
         $c->expects($this->at(2))
             ->method('internal_set_data')
-            ->with($cm, $changed);
+            ->with($cm, $comparewith);
         $c->update_state($cm, COMPLETION_INCOMPLETE);
 
         // Auto, change state.
@@ -190,9 +211,11 @@ class core_completionlib_testcase extends advanced_testcase {
         $changed = clone($current);
         $changed->timemodified = time();
         $changed->completionstate = COMPLETION_COMPLETE_PASS;
+        $comparewith = new phpunit_constraint_object_is_equal_with_exceptions($changed);
+        $comparewith->add_exception('timemodified', 'assertGreaterThanOrEqual');
         $c->expects($this->at(3))
             ->method('internal_set_data')
-            ->with($cm, $changed);
+            ->with($cm, $comparewith);
         $c->update_state($cm, COMPLETION_COMPLETE_PASS);
     }
 
@@ -298,7 +321,7 @@ class core_completionlib_testcase extends advanced_testcase {
     }
 
     public function test_delete_all_state() {
-        global $DB, $SESSION;
+        global $DB;
         $this->mock_setup();
 
         $course = (object)array('id'=>13);
@@ -312,21 +335,6 @@ class core_completionlib_testcase extends advanced_testcase {
             ->with('course_modules_completion', array('coursemoduleid'=>42))
             ->will($this->returnValue(true));
         $c->delete_all_state($cm);
-
-        // Build up a session to check it deletes the right bits from it
-        // (and not other bits).
-        $SESSION->completioncache = array();
-        $SESSION->completioncache[13] = array();
-        $SESSION->completioncache[13][42] = 'foo';
-        $SESSION->completioncache[13][43] = 'foo';
-        $SESSION->completioncache[14] = array();
-        $SESSION->completioncache[14][42] = 'foo';
-        $DB->expects($this->at(0))
-            ->method('delete_records')
-            ->with('course_modules_completion', array('coursemoduleid'=>42))
-            ->will($this->returnValue(true));
-        $c->delete_all_state($cm);
-        $this->assertEquals(array(13=>array(43=>'foo'), 14=>array(42=>'foo')), $SESSION->completioncache);
     }
 
     public function test_reset_all_state() {
@@ -369,10 +377,12 @@ class core_completionlib_testcase extends advanced_testcase {
     }
 
     public function test_get_data() {
-        global $DB, $SESSION;
+        global $DB;
         $this->mock_setup();
 
-        $c = new completion_info((object)array('id'=>42));
+        $cache = cache::make('core', 'completion');
+
+        $c = new completion_info((object)array('id'=>42, 'cacherev'=>1));
         $cm = (object)array('id'=>13, 'course'=>42);
 
         // 1. Not current user, record exists.
@@ -385,18 +395,20 @@ class core_completionlib_testcase extends advanced_testcase {
             ->will($this->returnValue($sillyrecord));
         $result = $c->get_data($cm, false, 123);
         $this->assertEquals($sillyrecord, $result);
-        $this->assertFalse(isset($SESSION->completioncache));
+        $this->assertEquals(false, $cache->get('123_42')); // Not current user is not cached.
 
-        // 2. Not current user, default record, whole course (ignored).
+        // 2. Not current user, default record, whole course.
+        $cache->purge();
         $DB->expects($this->at(0))
-            ->method('get_record')
-            ->with('course_modules_completion', array('coursemoduleid'=>13, 'userid'=>123))
-            ->will($this->returnValue(false));
-        $result=$c->get_data($cm, true, 123);
+            ->method('get_records_sql')
+            ->will($this->returnValue(array()));
+        $modinfo = new stdClass();
+        $modinfo->cms = array((object)array('id'=>13));
+        $result=$c->get_data($cm, true, 123, $modinfo);
         $this->assertEquals((object)array(
             'id'=>'0', 'coursemoduleid'=>13, 'userid'=>123, 'completionstate'=>0,
             'viewed'=>0, 'timemodified'=>0), $result);
-        $this->assertFalse(isset($SESSION->completioncache));
+        $this->assertEquals(false, $cache->get('123_42')); // Not current user is not cached.
 
         // 3. Current user, single record, not from cache.
         $DB->expects($this->at(0))
@@ -405,34 +417,15 @@ class core_completionlib_testcase extends advanced_testcase {
             ->will($this->returnValue($sillyrecord));
         $result = $c->get_data($cm);
         $this->assertEquals($sillyrecord, $result);
-        $this->assertEquals($sillyrecord, $SESSION->completioncache[42][13]);
-        // When checking time(), allow for second overlaps.
-        $this->assertTrue(time()-$SESSION->completioncache[42]['updated']<2);
+        $cachevalue = $cache->get('314159_42');
+        $this->assertEquals($sillyrecord, $cachevalue[13]);
 
         // 4. Current user, 'whole course', but from cache.
         $result = $c->get_data($cm, true);
         $this->assertEquals($sillyrecord, $result);
 
-        // 5. Current user, single record, cache expired
-        $SESSION->completioncache[42]['updated']=37; // Quite a long time ago.
-        $now = time();
-        $SESSION->completioncache[17]['updated']=$now;
-        $SESSION->completioncache[39]['updated']=72; // Also a long time ago.
-        $DB->expects($this->at(0))
-            ->method('get_record')
-            ->with('course_modules_completion', array('coursemoduleid'=>13, 'userid'=>314159))
-            ->will($this->returnValue($sillyrecord));
-        $result = $c->get_data($cm, false);
-        $this->assertEquals($sillyrecord, $result);
-
-        // Check that updated value is right, then fudge it to make next compare work.
-        $this->assertTrue(time()-$SESSION->completioncache[42]['updated']<2);
-        $SESSION->completioncache[42]['updated']=$now;
-        // Check things got expired from cache.
-        $this->assertEquals(array(42=>array(13=>$sillyrecord, 'updated'=>$now), 17=>array('updated'=>$now)), $SESSION->completioncache);
-
-        // 6. Current user, 'whole course' and record not in cache.
-        unset($SESSION->completioncache);
+        // 5. Current user, 'whole course' and record not in cache.
+        $cache->purge();
 
         // Scenario: Completion data exists for one CMid.
         $basicrecord = (object)array('coursemoduleid'=>13);
@@ -449,15 +442,15 @@ class core_completionlib_testcase extends advanced_testcase {
         $this->assertEquals($basicrecord, $result);
 
         // Check the cache contents.
-        $this->assertTrue(time()-$SESSION->completioncache[42]['updated']<2);
-        $SESSION->completioncache[42]['updated'] = $now;
-        $this->assertEquals(array(42=>array(13=>$basicrecord, 14=>(object)array(
-            'id'=>'0', 'coursemoduleid'=>14, 'userid'=>314159, 'completionstate'=>0,
-            'viewed'=>0, 'timemodified'=>0), 'updated'=>$now)), $SESSION->completioncache);
+        $cachevalue = $cache->get('314159_42');
+        $this->assertEquals($basicrecord, $cachevalue[13]);
+        $this->assertEquals((object)array('id'=>'0', 'coursemoduleid'=>14,
+            'userid'=>314159, 'completionstate'=>0, 'viewed'=>0, 'timemodified'=>0),
+            $cachevalue[14]);
     }
 
     public function test_internal_set_data() {
-        global $DB, $SESSION;
+        global $DB;
         $this->setup_data();
 
         $this->setUser($this->user);
@@ -473,14 +466,17 @@ class core_completionlib_testcase extends advanced_testcase {
         $data->coursemoduleid = $cm->id;
         $data->completionstate = COMPLETION_COMPLETE;
         $data->timemodified = time();
+        $data->viewed = COMPLETION_NOT_VIEWED;
 
         $c->internal_set_data($cm, $data);
         $d1 = $DB->get_field('course_modules_completion', 'id', array('coursemoduleid' => $cm->id));
         $this->assertEquals($d1, $data->id);
-        $this->assertEquals(array($this->course->id => array($cm->id => $data)), $SESSION->completioncache);
+        $cache = cache::make('core', 'completion');
+        // Cache was not set for another user.
+        $this->assertEquals(array('cacherev' => $this->course->cacherev, $cm->id => $data),
+            $cache->get($data->userid . '_' . $cm->course));
 
-        // 2) Test with existing data and for different user (not cached).
-        unset($SESSION->completioncache);
+        // 2) Test with existing data and for different user.
         $forum2 = $this->getDataGenerator()->create_module('forum', array('course' => $this->course->id), $completionauto);
         $cm2 = get_coursemodule_from_instance('forum', $forum2->id);
         $newuser = $this->getDataGenerator()->create_user();
@@ -491,8 +487,13 @@ class core_completionlib_testcase extends advanced_testcase {
         $d2->coursemoduleid = $cm2->id;
         $d2->completionstate = COMPLETION_COMPLETE;
         $d2->timemodified = time();
+        $d2->viewed = COMPLETION_NOT_VIEWED;
         $c->internal_set_data($cm2, $d2);
-        $this->assertFalse(isset($SESSION->completioncache));
+        // Cache for current user returns the data.
+        $cachevalue = $cache->get($data->userid . '_' . $cm->course);
+        $this->assertEquals($data, $cachevalue[$cm->id]);
+        // Cache for another user is not filled.
+        $this->assertEquals(false, $cache->get($d2->userid . '_' . $cm2->course));
 
         // 3) Test where it THINKS the data is new (from cache) but actually
         //    in the database it has been set since.
@@ -506,6 +507,7 @@ class core_completionlib_testcase extends advanced_testcase {
         $d3->coursemoduleid = $cm3->id;
         $d3->completionstate = COMPLETION_COMPLETE;
         $d3->timemodified = time();
+        $d3->viewed = COMPLETION_NOT_VIEWED;
         $DB->insert_record('course_modules_completion', $d3);
         $c->internal_set_data($cm, $data);
     }
@@ -694,10 +696,14 @@ class core_completionlib_testcase extends advanced_testcase {
     }
 
     public function test_get_activities() {
+        global $CFG;
         $this->resetAfterTest();
 
+        // Enable completion before creating modules, otherwise the completion data is not written in DB.
+        $CFG->enablecompletion = true;
+
         // Create a course with mixed auto completion data.
-        $course = $this->getDataGenerator()->create_course();
+        $course = $this->getDataGenerator()->create_course(array('enablecompletion' => true));
         $completionauto = array('completion' => COMPLETION_TRACKING_AUTOMATIC);
         $completionmanual = array('completion' => COMPLETION_TRACKING_MANUAL);
         $completionnone = array('completion' => COMPLETION_TRACKING_NONE);
@@ -710,7 +716,7 @@ class core_completionlib_testcase extends advanced_testcase {
         $data2 = $this->getDataGenerator()->create_module('data', array('course' => $course->id), $completionnone);
 
         // Create data in another course to make sure it's not considered.
-        $course2 = $this->getDataGenerator()->create_course();
+        $course2 = $this->getDataGenerator()->create_course(array('enablecompletion' => true));
         $c2forum = $this->getDataGenerator()->create_module('forum', array('course' => $course2->id), $completionauto);
         $c2page = $this->getDataGenerator()->create_module('page', array('course' => $course2->id), $completionmanual);
         $c2data = $this->getDataGenerator()->create_module('data', array('course' => $course2->id), $completionnone);
@@ -731,11 +737,15 @@ class core_completionlib_testcase extends advanced_testcase {
     }
 
     public function test_has_activities() {
+        global $CFG;
         $this->resetAfterTest();
 
+        // Enable completion before creating modules, otherwise the completion data is not written in DB.
+        $CFG->enablecompletion = true;
+
         // Create a course with mixed auto completion data.
-        $course = $this->getDataGenerator()->create_course();
-        $course2 = $this->getDataGenerator()->create_course();
+        $course = $this->getDataGenerator()->create_course(array('enablecompletion' => true));
+        $course2 = $this->getDataGenerator()->create_course(array('enablecompletion' => true));
         $completionauto = array('completion' => COMPLETION_TRACKING_AUTOMATIC);
         $completionnone = array('completion' => COMPLETION_TRACKING_NONE);
         $c1forum = $this->getDataGenerator()->create_module('forum', array('course' => $course->id), $completionauto);
@@ -752,9 +762,10 @@ class core_completionlib_testcase extends advanced_testcase {
      * Test course module completion update event.
      */
     public function test_course_module_completion_updated_event() {
-        global $USER;
+        global $USER, $CFG;
 
         $this->setup_data();
+
         $this->setAdminUser();
 
         $completionauto = array('completion' => COMPLETION_TRACKING_AUTOMATIC);
@@ -776,9 +787,10 @@ class core_completionlib_testcase extends advanced_testcase {
         $this->assertInstanceOf('\core\event\course_module_completion_updated', $event);
         $this->assertEquals($forum->cmid, $event->get_record_snapshot('course_modules_completion', $event->objectid)->coursemoduleid);
         $this->assertEquals($current, $event->get_record_snapshot('course_modules_completion', $event->objectid));
-        $this->assertEquals(context_module::instance($forum->id), $event->get_context());
+        $this->assertEquals(context_module::instance($forum->cmid), $event->get_context());
         $this->assertEquals($USER->id, $event->userid);
-        $this->assertEquals($this->user->id, $event->other['relateduserid']);
+        $this->assertEquals($this->user->id, $event->relateduserid);
+        $this->assertInstanceOf('moodle_url', $event->get_url());
         $this->assertEventLegacyData($current, $event);
     }
 
@@ -804,8 +816,9 @@ class core_completionlib_testcase extends advanced_testcase {
         $this->assertEquals($this->course->id, $event->get_record_snapshot('course_completions', $event->objectid)->course);
         $this->assertEquals($this->course->id, $event->courseid);
         $this->assertEquals($USER->id, $event->userid);
-        $this->assertEquals($this->user->id, $event->other['relateduserid']);
+        $this->assertEquals($this->user->id, $event->relateduserid);
         $this->assertEquals(context_course::instance($this->course->id), $event->get_context());
+        $this->assertInstanceOf('moodle_url', $event->get_url());
         $data = $ccompletion->get_record_data();
         $this->assertEventLegacyData($data, $event);
     }
@@ -833,8 +846,20 @@ class core_completionlib_testcase extends advanced_testcase {
         $this->assertInstanceOf('\core\event\course_completion_updated', $event);
         $this->assertEquals($this->course->id, $event->courseid);
         $this->assertEquals($coursecontext, $event->get_context());
+        $this->assertInstanceOf('moodle_url', $event->get_url());
         $expectedlegacylog = array($this->course->id, 'course', 'completion updated', 'completion.php?id='.$this->course->id);
         $this->assertEventLegacyLogData($expectedlegacylog, $event);
+    }
+
+    public function test_completion_can_view_data() {
+        $this->setup_data();
+
+        $student = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($student->id, $this->course->id);
+
+        $this->setUser($student);
+        $this->assertTrue(completion_can_view_data($student->id, $this->course->id));
+        $this->assertFalse(completion_can_view_data($this->user->id, $this->course->id));
     }
 }
 

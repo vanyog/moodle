@@ -16,10 +16,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @package    mod
- * @subpackage workshop
- * @copyright  2010 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   mod_workshop
+ * @copyright 2010 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 /**
@@ -205,6 +204,7 @@ class restore_workshop_activity_structure_step extends restore_activity_structur
         $data->timegraded = $this->apply_date_offset($data->timegraded);
 
         $newitemid = $DB->insert_record('workshop_aggregations', $data);
+        $this->set_mapping('workshop_aggregation', $oldid, $newitemid, true);
     }
 
     protected function after_execute() {

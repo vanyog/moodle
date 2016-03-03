@@ -160,8 +160,10 @@ abstract class backup_controller_dbops extends backup_dbops {
         $dbman = $DB->get_manager(); // We are going to use database_manager services
 
         $targettablename = 'backup_ids_temp';
-        $table = new xmldb_table($targettablename);
-        $dbman->drop_table($table); // And drop it
+        if ($dbman->table_exists($targettablename)) {
+            $table = new xmldb_table($targettablename);
+            $dbman->drop_table($table); // And drop it
+        }
     }
 
     /**
@@ -173,11 +175,7 @@ abstract class backup_controller_dbops extends backup_dbops {
     public static function decode_backup_temp_info($info) {
         // We encode all data except null.
         if ($info != null) {
-            if (extension_loaded('zlib')) {
-                return unserialize(gzuncompress(base64_decode($info)));
-            } else {
-                return unserialize(base64_decode($info));
-            }
+            return unserialize(gzuncompress(base64_decode($info)));
         }
         return $info;
     }
@@ -193,11 +191,7 @@ abstract class backup_controller_dbops extends backup_dbops {
         if ($info != null) {
             // We compress if possible. It reduces db, network and memory storage. The saving is greater than CPU compression cost.
             // Compression level 1 is chosen has it produces good compression with the smallest possible overhead, see MDL-40618.
-            if (extension_loaded('zlib')) {
-                return base64_encode(gzcompress(serialize($info), 1));
-            } else {
-                return base64_encode(serialize($info));
-            }
+            return base64_encode(gzcompress(serialize($info), 1));
         }
         return $info;
     }
@@ -350,14 +344,31 @@ abstract class backup_controller_dbops extends backup_dbops {
 
     /**
      * Get details information for main moodle_backup.xml file, extracting it from
-     * the specified controller
+     * the specified controller.
+     *
+     * If you specify the progress monitor, this will start a new progress section
+     * to track progress in processing (in case this task takes a long time).
+     *
+     * @param string $backupid Backup ID
+     * @param \core\progress\base $progress Optional progress monitor
      */
-    public static function get_moodle_backup_information($backupid) {
+    public static function get_moodle_backup_information($backupid,
+            \core\progress\base $progress = null) {
+
+        // Start tracking progress if required (for load_controller).
+        if ($progress) {
+            $progress->start_progress('get_moodle_backup_information', 2);
+        }
 
         $detailsinfo = array(); // Information details
         $contentsinfo= array(); // Information about backup contents
         $settingsinfo= array(); // Information about backup settings
         $bc = self::load_controller($backupid); // Load controller
+
+        // Note that we have loaded controller.
+        if ($progress) {
+            $progress->progress(1);
+        }
 
         // Details info
         $detailsinfo['id'] = $bc->get_id();
@@ -377,8 +388,15 @@ abstract class backup_controller_dbops extends backup_dbops {
         $contentsinfo['sections']   = array();
         $contentsinfo['course']     = array();
 
+        // Get tasks and start nested progress.
+        $tasks = $bc->get_plan()->get_tasks();
+        if ($progress) {
+            $progress->start_progress('get_moodle_backup_information', count($tasks));
+            $done = 1;
+        }
+
         // Contents info (extract information from tasks)
-        foreach ($bc->get_plan()->get_tasks() as $task) {
+        foreach ($tasks as $task) {
 
             if ($task instanceof backup_activity_task) { // Activity task
 
@@ -407,9 +425,20 @@ abstract class backup_controller_dbops extends backup_dbops {
                 list($contentinfo, $settings) = self::get_root_backup_information($task);
                 $settingsinfo = array_merge($settingsinfo, $settings);
             }
+
+            // Report task handled.
+            if ($progress) {
+                $progress->progress($done++);
+            }
         }
 
         $bc->destroy(); // Always need to destroy controller to handle circular references
+
+        // Finish progress reporting.
+        if ($progress) {
+            $progress->end_progress();
+            $progress->end_progress();
+        }
 
         return array(array((object)$detailsinfo), $contentsinfo, $settingsinfo);
     }
@@ -495,7 +524,7 @@ abstract class backup_controller_dbops extends backup_dbops {
      */
     public static function backup_get_original_course_info($courseid) {
         global $DB;
-        return $DB->get_record('course', array('id' => $courseid), 'fullname, shortname, startdate');
+        return $DB->get_record('course', array('id' => $courseid), 'fullname, shortname, startdate, format');
     }
 
     /**
@@ -518,11 +547,50 @@ abstract class backup_controller_dbops extends backup_dbops {
                 self::apply_general_config_defaults($controller);
                 break;
             case backup::MODE_AUTOMATED:
-                // TODO: Move the loading from automatic stuff to here
+                // Load the automated defaults.
+                self::apply_auto_config_defaults($controller);
                 break;
             default:
                 // Nothing to do for other modes (IMPORT/HUB...). Some day we
                 // can define defaults (admin UI...) for them if we want to
+        }
+    }
+
+    /**
+     * Sets the controller settings default values from the automated backup config.
+     *
+     * @param backup_controller $controller
+     */
+    private static function apply_auto_config_defaults(backup_controller $controller) {
+        $settings = array(
+            // Config name                   => Setting name.
+            'backup_auto_users'              => 'users',
+            'backup_auto_role_assignments'   => 'role_assignments',
+            'backup_auto_activities'         => 'activities',
+            'backup_auto_blocks'             => 'blocks',
+            'backup_auto_filters'            => 'filters',
+            'backup_auto_comments'           => 'comments',
+            'backup_auto_badges'             => 'badges',
+            'backup_auto_userscompletion'    => 'userscompletion',
+            'backup_auto_logs'               => 'logs',
+            'backup_auto_histories'          => 'grade_histories',
+            'backup_auto_questionbank'       => 'questionbank',
+            'backup_auto_groups'             => 'groups'
+        );
+        $plan = $controller->get_plan();
+        foreach ($settings as $config => $settingname) {
+            $value = get_config('backup', $config);
+            if ($value === false) {
+                // The setting is not set.
+                $controller->log('Could not find a value for the config ' . $config, BACKUP::LOG_DEBUG);
+                continue;
+            }
+            if ($plan->setting_exists($settingname)) {
+                $setting = $plan->get_setting($settingname);
+                $setting->set_value($value);
+            } else {
+                $controller->log('Unknown setting: ' . $settingname, BACKUP::LOG_DEBUG);
+            }
         }
     }
 
@@ -544,11 +612,20 @@ abstract class backup_controller_dbops extends backup_dbops {
             'backup_general_badges'             => 'badges',
             'backup_general_userscompletion'    => 'userscompletion',
             'backup_general_logs'               => 'logs',
-            'backup_general_histories'          => 'grade_histories'
+            'backup_general_histories'          => 'grade_histories',
+            'backup_general_questionbank'       => 'questionbank',
+            'backup_general_groups'             => 'groups'
         );
         $plan = $controller->get_plan();
         foreach ($settings as $config=>$settingname) {
             $value = get_config('backup', $config);
+            if ($value === false) {
+                // Ignore this because the config has not been set. get_config
+                // returns false if a setting doesn't exist, '0' is returned when
+                // the configuration is set to false.
+                $controller->log('Could not find a value for the config ' . $config, BACKUP::LOG_DEBUG);
+                continue;
+            }
             $locked = (get_config('backup', $config.'_locked') == true);
             if ($plan->setting_exists($settingname)) {
                 $setting = $plan->get_setting($settingname);
@@ -558,6 +635,8 @@ abstract class backup_controller_dbops extends backup_dbops {
                         $setting->set_status(base_setting::LOCKED_BY_CONFIG);
                     }
                 }
+            } else {
+                $controller->log('Unknown setting: ' . $setting, BACKUP::LOG_DEBUG);
             }
         }
     }

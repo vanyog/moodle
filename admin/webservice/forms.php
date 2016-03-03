@@ -66,6 +66,14 @@ class external_service_form extends moodleform {
         $mform->addElement('text', 'name', get_string('name'));
         $mform->addRule('name', get_string('required'), 'required', null, 'client');
         $mform->setType('name', PARAM_TEXT);
+
+        $mform->addElement('text', 'shortname', get_string('shortname'), 'maxlength="255" size="20"');
+        $mform->setType('shortname', PARAM_TEXT);
+        if (!empty($service->id)) {
+            $mform->hardFreeze('shortname');
+            $mform->setConstants('shortname', $service->shortname);
+        }
+
         $mform->addElement('advcheckbox', 'enabled', get_string('enabled', 'webservice'));
         $mform->setType('enabled', PARAM_BOOL);
         $mform->addElement('advcheckbox', 'restrictedusers',
@@ -145,7 +153,27 @@ class external_service_form extends moodleform {
     }
 
     function validation($data, $files) {
+        global $DB;
+
         $errors = parent::validation($data, $files);
+
+        // Add field validation check for duplicate name.
+        if ($webservice = $DB->get_record('external_services', array('name' => $data['name']))) {
+            if (empty($data['id']) || $webservice->id != $data['id']) {
+                $errors['name'] = get_string('nameexists', 'webservice');
+            }
+        }
+
+        // Add field validation check for duplicate shortname.
+        // Allow duplicated "empty" shortnames.
+        if (!empty($data['shortname'])) {
+            if ($service = $DB->get_record('external_services', array('shortname' => $data['shortname']), '*', IGNORE_MULTIPLE)) {
+                if (empty($data['id']) || $service->id != $data['id']) {
+                    $errors['shortname'] = get_string('shortnametaken', 'webservice', $service->name);
+                }
+            }
+        }
+
         return $errors;
     }
 
@@ -169,7 +197,12 @@ class external_service_functions_form extends moodleform {
         foreach ($functions as $functionid => $functionname) {
             //retrieve full function information (including the description)
             $function = external_function_info($functionname);
-            $functions[$functionid] = $function->name . ':' . $function->description;
+            if (empty($function->deprecated)) {
+                $functions[$functionid] = $function->name . ':' . $function->description;
+            } else {
+                // Exclude the deprecated ones.
+                unset($functions[$functionid]);
+            }
         }
 
         $mform->addElement('searchableselector', 'fids', get_string('name'),
@@ -207,12 +240,14 @@ class web_service_token_form extends moodleform {
 
             if ($usertotal < 500) {
                 list($sort, $params) = users_order_by_sql('u');
-                //user searchable selector - get all users (admin and guest included)
-                //user must be confirmed, not deleted, not suspended, not guest
-                $sql = "SELECT u.id, u.firstname, u.lastname
-                            FROM {user} u
-                            WHERE u.deleted = 0 AND u.confirmed = 1 AND u.suspended = 0 AND u.id != :siteguestid
-                            ORDER BY $sort";
+                // User searchable selector - return users who are confirmed, not deleted, not suspended and not a guest.
+                $sql = 'SELECT u.id, ' . get_all_user_name_fields(true, 'u') . '
+                        FROM {user} u
+                        WHERE u.deleted = 0
+                        AND u.confirmed = 1
+                        AND u.suspended = 0
+                        AND u.id != :siteguestid
+                        ORDER BY ' . $sort;
                 $params['siteguestid'] = $CFG->siteguest;
                 $users = $DB->get_records_sql($sql, $params);
                 $options = array();

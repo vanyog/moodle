@@ -34,6 +34,13 @@ class enrol_ldap_plugin extends enrol_plugin {
     protected $errorlogtag = '[ENROL LDAP] ';
 
     /**
+     * The object class to use when finding users.
+     *
+     * @var string $userobjectclass
+     */
+    protected $userobjectclass;
+
+    /**
      * Constructor for the plugin. In addition to calling the parent
      * constructor, we define and 'fix' some settings depending on the
      * real settings the admin defined.
@@ -59,8 +66,13 @@ class enrol_ldap_plugin extends enrol_plugin {
         unset($ldap_usertypes);
 
         $default = ldap_getdefaults();
-        // Remove the objectclass default, as the values specified there are for
-        // users, and we are dealing with groups here.
+
+        // The objectclass in the defaults is for a user.
+        // This will be required later, but enrol_ldap uses 'objectclass' for its group objectclass.
+        // Save the normalised user objectclass for later.
+        $this->userobjectclass = ldap_normalise_objectclass($default['objectclass'][$this->get_config('user_type')]);
+
+        // Remove the objectclass default, as the values specified there are for users, and we are dealing with groups here.
         unset($default['objectclass']);
 
         // Use defaults if values not given. Dont use this->get_config()
@@ -72,31 +84,19 @@ class enrol_ldap_plugin extends enrol_plugin {
             }
         }
 
+        // Normalise the objectclass used for groups.
         if (empty($this->config->objectclass)) {
-            // Can't send empty filter. Fix it for now and future occasions
-            $this->set_config('objectclass', '(objectClass=*)');
-        } else if (stripos($this->config->objectclass, 'objectClass=') === 0) {
-            // Value is 'objectClass=some-string-here', so just add ()
-            // around the value (filter _must_ have them).
-            // Fix it for now and future occasions
-            $this->set_config('objectclass', '('.$this->config->objectclass.')');
-        } else if (stripos($this->config->objectclass, '(') !== 0) {
-            // Value is 'some-string-not-starting-with-left-parentheses',
-            // which is assumed to be the objectClass matching value.
-            // So build a valid filter with it.
-            $this->set_config('objectclass', '(objectClass='.$this->config->objectclass.')');
+            // No objectclass set yet - set a default class.
+            $this->config->objectclass = ldap_normalise_objectclass(null, '*');
+            $this->set_config('objectclass', $this->config->objectclass);
         } else {
-            // There is an additional possible value
-            // '(some-string-here)', that can be used to specify any
-            // valid filter string, to select subsets of users based
-            // on any criteria. For example, we could select the users
-            // whose objectClass is 'user' and have the
-            // 'enabledMoodleUser' attribute, with something like:
-            //
-            //   (&(objectClass=user)(enabledMoodleUser=1))
-            //
-            // In this particular case we don't need to do anything,
-            // so leave $this->config->objectclass as is.
+            $objectclass = ldap_normalise_objectclass($this->config->objectclass);
+            if ($objectclass !== $this->config->objectclass) {
+                // The objectclass was changed during normalisation.
+                // Save it in config, and update the local copy of config.
+                $this->set_config('objectclass', $objectclass);
+                $this->config->objectclass = $objectclass;
+            }
         }
     }
 
@@ -106,7 +106,12 @@ class enrol_ldap_plugin extends enrol_plugin {
      * @param object $instance
      * @return bool
      */
-    public function instance_deleteable($instance) {
+    public function can_delete_instance($instance) {
+        $context = context_course::instance($instance->courseid);
+        if (!has_capability('enrol/ldap:manage', $context)) {
+            return false;
+        }
+
         if (!enrol_is_enabled('ldap')) {
             return true;
         }
@@ -120,6 +125,17 @@ class enrol_ldap_plugin extends enrol_plugin {
     }
 
     /**
+     * Is it possible to hide/show enrol instance via standard UI?
+     *
+     * @param stdClass $instance
+     * @return bool
+     */
+    public function can_hide_show_instance($instance) {
+        $context = context_course::instance($instance->courseid);
+        return has_capability('enrol/ldap:config', $context);
+    }
+
+    /**
      * Forces synchronisation of user enrolments with LDAP server.
      * It creates courses if the plugin is configured to do so.
      *
@@ -130,7 +146,11 @@ class enrol_ldap_plugin extends enrol_plugin {
         global $DB;
 
         // Do not try to print anything to the output because this method is called during interactive login.
-        $trace = new error_log_progress_trace($this->errorlogtag);
+        if (PHPUNIT_TEST) {
+            $trace = new null_progress_trace();
+        } else {
+            $trace = new error_log_progress_trace($this->errorlogtag);
+        }
 
         if (!$this->ldap_connect($trace)) {
             $trace->finished();
@@ -147,7 +167,7 @@ class enrol_ldap_plugin extends enrol_plugin {
         }
 
         // We may need a lot of memory here
-        @set_time_limit(0);
+        core_php_time_limit::raise();
         raise_memory_limit(MEMORY_HUGE);
 
         // Get enrolments for each type of role.
@@ -311,7 +331,7 @@ class enrol_ldap_plugin extends enrol_plugin {
         $ldap_pagedresults = ldap_paged_results_supported($this->get_config('ldap_version'));
 
         // we may need a lot of memory here
-        @set_time_limit(0);
+        core_php_time_limit::raise();
         raise_memory_limit(MEMORY_HUGE);
 
         $oneidnumber = null;
@@ -430,6 +450,8 @@ class enrol_ldap_plugin extends enrol_plugin {
                                 $trace->output(get_string('createnotcourseextid', 'enrol_ldap', array('courseextid'=>$idnumber)));
                                 continue; // Next; skip this one!
                             }
+                        } else {  // Check if course needs update & update as needed.
+                            $this->update_course($course_obj, $course, $trace);
                         }
 
                         // Enrol & unenrol
@@ -468,7 +490,7 @@ class enrol_ldap_plugin extends enrol_plugin {
                                 // as the idnumber does not match their dn and we get dn's from membership.
                                 $memberidnumbers = array();
                                 foreach ($ldapmembers as $ldapmember) {
-                                    $result = ldap_read($this->ldapconnection, $ldapmember, '(objectClass=*)',
+                                    $result = ldap_read($this->ldapconnection, $ldapmember, $this->userobjectclass,
                                                         array($this->config->idnumber_attribute));
                                     $entry = ldap_first_entry($this->ldapconnection, $result);
                                     $values = ldap_get_values($this->ldapconnection, $entry, $this->config->idnumber_attribute);
@@ -702,6 +724,7 @@ class enrol_ldap_plugin extends enrol_plugin {
             $usergroups = $this->ldap_find_user_groups($extmemberuid);
             if(count($usergroups) > 0) {
                 foreach ($usergroups as $group) {
+                    $group = ldap_filter_addslashes($group);
                     $ldap_search_pattern .= '('.$this->get_config('memberattribute_role'.$role->id).'='.$group.')';
                 }
             }
@@ -815,10 +838,9 @@ class enrol_ldap_plugin extends enrol_plugin {
         require_once($CFG->libdir.'/ldaplib.php');
 
         $ldap_contexts = explode(';', $this->get_config('user_contexts'));
-        $ldap_defaults = ldap_getdefaults();
 
         return ldap_find_userdn($this->ldapconnection, $userid, $ldap_contexts,
-                                '(objectClass='.$ldap_defaults['objectclass'][$this->get_config('user_type')].')',
+                                $this->userobjectclass,
                                 $this->get_config('idnumber_attribute'), $this->get_config('user_search_sub'));
     }
 
@@ -962,7 +984,7 @@ class enrol_ldap_plugin extends enrol_plugin {
             $template->groupmodeforce = $courseconfig->groupmodeforce;
             $template->visible        = $courseconfig->visible;
             $template->lang           = $courseconfig->lang;
-            $template->groupmodeforce = $courseconfig->groupmodeforce;
+            $template->enablecompletion = $courseconfig->enablecompletion;
         }
         $course = $template;
 
@@ -998,6 +1020,78 @@ class enrol_ldap_plugin extends enrol_plugin {
 
         $newcourse = create_course($course);
         return $newcourse->id;
+    }
+
+    /**
+     * Will update a moodle course with new values from LDAP
+     * A field will be updated only if it is marked to be updated
+     * on sync in plugin settings
+     *
+     * @param object $course
+     * @param array $externalcourse
+     * @param progress_trace $trace
+     * @return bool
+     */
+    protected function update_course($course, $externalcourse, progress_trace $trace) {
+        global $CFG, $DB;
+
+        $coursefields = array ('shortname', 'fullname', 'summary');
+        static $shouldupdate;
+
+        // Initialize $shouldupdate variable. Set to true if one or more fields are marked for update.
+        if (!isset($shouldupdate)) {
+            $shouldupdate = false;
+            foreach ($coursefields as $field) {
+                $shouldupdate = $shouldupdate || $this->get_config('course_'.$field.'_updateonsync');
+            }
+        }
+
+        // If we should not update return immediately.
+        if (!$shouldupdate) {
+            return false;
+        }
+
+        require_once("$CFG->dirroot/course/lib.php");
+        $courseupdated = false;
+        $updatedcourse = new stdClass();
+        $updatedcourse->id = $course->id;
+
+        // Update course fields if necessary.
+        foreach ($coursefields as $field) {
+            // If field is marked to be updated on sync && field data was changed update it.
+            if ($this->get_config('course_'.$field.'_updateonsync')
+                    && isset($externalcourse[$this->get_config('course_'.$field)][0])
+                    && $course->{$field} != $externalcourse[$this->get_config('course_'.$field)][0]) {
+                $updatedcourse->{$field} = $externalcourse[$this->get_config('course_'.$field)][0];
+                $courseupdated = true;
+            }
+        }
+
+        if (!$courseupdated) {
+            $trace->output(get_string('courseupdateskipped', 'enrol_ldap', $course));
+            return false;
+        }
+
+        // Do not allow empty fullname or shortname.
+        if ((isset($updatedcourse->fullname) && empty($updatedcourse->fullname))
+                || (isset($updatedcourse->shortname) && empty($updatedcourse->shortname))) {
+            // We are in trouble!
+            $trace->output(get_string('cannotupdatecourse', 'enrol_ldap', $course));
+            return false;
+        }
+
+        // Check if the shortname already exists if it does - skip course updating.
+        if (isset($updatedcourse->shortname)
+                && $DB->record_exists('course', array('shortname' => $updatedcourse->shortname))) {
+            $trace->output(get_string('cannotupdatecourse_duplicateshortname', 'enrol_ldap', $course));
+            return false;
+        }
+
+        // Finally - update course in DB.
+        update_course($updatedcourse);
+        $trace->output(get_string('courseupdated', 'enrol_ldap', $course));
+
+        return true;
     }
 
     /**
@@ -1081,4 +1175,3 @@ class enrol_ldap_plugin extends enrol_plugin {
         }
     }
 }
-

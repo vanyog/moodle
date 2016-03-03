@@ -27,100 +27,34 @@ defined('MOODLE_INTERNAL') || die();
 function xmldb_editor_tinymce_upgrade($oldversion) {
     global $CFG, $DB;
 
-    $dbman = $DB->get_manager();
-
-
-    if ($oldversion < 2012083100) {
-        // Reset redesigned editor toolbar setting.
-        unset_config('customtoolbar', 'editor_tinymce');
-        upgrade_plugin_savepoint(true, 2012083100, 'editor', 'tinymce');
-    }
-
-
-    // Moodle v2.4.0 release upgrade line
-    // Put any upgrade step following this
-
-
-    // Moodle v2.5.0 release upgrade line.
-    // Put any upgrade step following this.
-
-
-    // Moodle v2.6.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    if ($oldversion < 2013061400) {
-        // Reset redesigned editor toolbar setting.
-        $oldorder = "fontselect,fontsizeselect,formatselect,|,undo,redo,|,search,replace,|,fullscreen
-
-bold,italic,underline,strikethrough,sub,sup,|,justifyleft,justifycenter,justifyright,|,cleanup,removeformat,pastetext,pasteword,|,forecolor,backcolor,|,ltr,rtl
-
-bullist,numlist,outdent,indent,|,link,unlink,|,image,nonbreaking,charmap,table,|,code";
-
-        $neworder = "formatselect,bold,italic,|,bullist,numlist,|,link,unlink,|,image
-
-undo,redo,|,underline,strikethrough,sub,sup,|,justifyleft,justifycenter,justifyright,|,outdent,indent,|,forecolor,backcolor,|,ltr,rtl,|,nonbreaking,charmap,table
-
-fontselect,fontsizeselect,code,search,replace,|,cleanup,removeformat,pastetext,pasteword,|,fullscreen";
-        $currentorder = get_config('editor_tinymce', 'customtoolbar');
-        if ($currentorder == $oldorder) {
-            unset_config('customtoolbar', 'editor_tinymce');
-            set_config('customtoolbar', $neworder, 'editor_tinymce');
-        }
-        upgrade_plugin_savepoint(true, 2013061400, 'editor', 'tinymce');
-    }
-
-    if ($oldversion < 2013070500) {
-        // Insert wrap plugin to nicely wrap the toolbars on small screens.
-        $oldorder = "formatselect,bold,italic,|,bullist,numlist,|,link,unlink,|,image
-
-undo,redo,|,underline,strikethrough,sub,sup,|,justifyleft,justifycenter,justifyright,|,outdent,indent,|,forecolor,backcolor,|,ltr,rtl,|,nonbreaking,charmap,table
-
-fontselect,fontsizeselect,code,search,replace,|,cleanup,removeformat,pastetext,pasteword,|,fullscreen";
-
-        $neworder = "formatselect,bold,italic,wrap,bullist,numlist,|,link,unlink,|,image
-
-undo,redo,|,underline,strikethrough,sub,sup,|,justifyleft,justifycenter,justifyright,wrap,outdent,indent,|,forecolor,backcolor,|,ltr,rtl,|,nonbreaking,charmap,table
-
-fontselect,fontsizeselect,wrap,code,search,replace,|,cleanup,removeformat,pastetext,pasteword,|,fullscreen";
-        $currentorder = get_config('editor_tinymce', 'customtoolbar');
-        if ($currentorder == $oldorder) {
-            unset_config('customtoolbar', 'editor_tinymce');
-            set_config('customtoolbar', $neworder, 'editor_tinymce');
-        } else {
-            // Simple auto conversion algorithm.
-            $toolbars = explode("\n", $oldorder);
-            $newtoolbars = array();
-            foreach ($toolbars as $toolbar) {
-                $sepcount = substr_count($toolbar, '|');
-
-                if ($sepcount > 0) {
-                    // We assume the middle separator (rounding down).
-                    $divisionindex = round($sepcount / 2, 0, PHP_ROUND_HALF_DOWN);
-
-                    $buttons = explode(',', $toolbar);
-                    $index = 0;
-                    foreach ($buttons as $key => $button) {
-                        if ($button === "|") {
-                            if ($index == $divisionindex) {
-                                $buttons[$key] = 'wrap';
-                                break;
-                            } else {
-                                $index += 1;
-                            }
-                        }
-                    }
-                    $toolbar = implode(',', $buttons);
-                }
-                array_push($newtoolbars, $toolbar);
+    if ($oldversion < 2014062900) {
+        // We only want to delete DragMath from the customtoolbar setting if the directory no longer exists. If
+        // the directory is present then it means it has been restored, so do not remove any settings.
+        if (!check_dir_exists($CFG->libdir . '/editor/tinymce/plugins/dragmath', false)) {
+            // Remove the DragMath plugin from the 'customtoolbar' setting (if it exists) as it has been removed.
+            $currentorder = get_config('editor_tinymce', 'customtoolbar');
+            $newtoolbarrows = array();
+            $currenttoolbarrows = explode("\n", $currentorder);
+            foreach ($currenttoolbarrows as $currenttoolbarrow) {
+                $currenttoolbarrow = implode(',', array_diff(str_getcsv($currenttoolbarrow), array('dragmath')));
+                $newtoolbarrows[] = $currenttoolbarrow;
             }
-            $neworder = implode("\n", $newtoolbars);
-
-            // Set the new config.
+            $neworder = implode("\n", $newtoolbarrows);
             unset_config('customtoolbar', 'editor_tinymce');
             set_config('customtoolbar', $neworder, 'editor_tinymce');
         }
-        upgrade_plugin_savepoint(true, 2013070500, 'editor', 'tinymce');
+
+        upgrade_plugin_savepoint(true, 2014062900, 'editor', 'tinymce');
     }
+
+    // Moodle v2.8.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Moodle v2.9.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Moodle v3.0.0 release upgrade line.
+    // Put any upgrade step following this.
 
     return true;
 }

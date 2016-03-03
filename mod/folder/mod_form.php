@@ -18,10 +18,9 @@
 /**
  * Folder configuration form
  *
- * @package    mod
- * @subpackage folder
- * @copyright  2009 Petr Skoda  {@link http://skodak.org}
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   mod_folder
+ * @copyright 2009 Petr Skoda  {@link http://skodak.org}
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
@@ -45,7 +44,7 @@ class mod_folder_mod_form extends moodleform_mod {
         }
         $mform->addRule('name', null, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
-        $this->add_intro_editor($config->requiremodintro);
+        $this->standard_intro_elements();
 
         //-------------------------------------------------------
         $mform->addElement('header', 'content', get_string('contentheader', 'folder'));
@@ -54,12 +53,21 @@ class mod_folder_mod_form extends moodleform_mod {
                 array(FOLDER_DISPLAY_PAGE => get_string('displaypage', 'mod_folder'),
                     FOLDER_DISPLAY_INLINE => get_string('displayinline', 'mod_folder')));
         $mform->addHelpButton('display', 'display', 'mod_folder');
+        if (!$this->courseformat->has_view_page()) {
+            $mform->setConstant('display', FOLDER_DISPLAY_PAGE);
+            $mform->hardFreeze('display');
+        }
         $mform->setExpanded('content');
 
         // Adding option to show sub-folders expanded or collapsed by default.
         $mform->addElement('advcheckbox', 'showexpanded', get_string('showexpanded', 'folder'));
         $mform->addHelpButton('showexpanded', 'showexpanded', 'mod_folder');
         $mform->setDefault('showexpanded', $config->showexpanded);
+
+        // Adding option to enable downloading archive of folder.
+        $mform->addElement('advcheckbox', 'showdownloadfolder', get_string('showdownloadfolder', 'folder'));
+        $mform->addHelpButton('showdownloadfolder', 'showdownloadfolder', 'mod_folder');
+        $mform->setDefault('showdownloadfolder', true);
         //-------------------------------------------------------
         $this->standard_coursemodule_elements();
 

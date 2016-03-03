@@ -27,7 +27,8 @@
 
 require_once(__DIR__ . '/../../../lib/behat/behat_base.php');
 
-use Behat\Behat\Context\Step\Given as Given,
+use Behat\Behat\Context\Step\Given,
+    Behat\Behat\Context\Step\Then,
     Behat\Mink\Exception\ElementNotFoundException as ElementNotFoundException;
 
 /**
@@ -56,7 +57,7 @@ class behat_completion extends behat_base {
 
         return array(
             new Given('I go to the current course activity completion report'),
-            new Given('I hover "' . $this->escape($xpath) . '" "xpath_element"')
+            new Then('"' . $this->escape($xpath) . '" "xpath_element" should exist')
         );
     }
 
@@ -75,7 +76,7 @@ class behat_completion extends behat_base {
             "/descendant::img[contains(@title, $titleliteral)]";
         return array(
             new Given('I go to the current course activity completion report'),
-            new Given('I hover "' . $this->escape($xpath) . '" "xpath_element"')
+            new Then('"' . $this->escape($xpath) . '" "xpath_element" should exist')
         );
 
         return $steps;
@@ -87,22 +88,62 @@ class behat_completion extends behat_base {
      * @Given /^I go to the current course activity completion report$/
      */
     public function go_to_the_current_course_activity_completion_report() {
+        $completionnode = get_string('pluginname', 'report_progress');
+        $reportsnode = get_string('courseadministration') . ' > ' . get_string('reports');
 
-        $steps = array();
-
-        // Expand reports node if we can't see the link.
-        try {
-            $this->find('xpath', "//div[@id='settingsnav']" .
-                "/descendant::li" .
-                "/descendant::li[not(contains(concat(' ', normalize-space(@class), ' '), ' collapsed '))]" .
-                "/descendant::p[contains(., '" . get_string('pluginname', 'report_progress') . "')]");
-        } catch (ElementNotFoundException $e) {
-            $steps[] = new Given('I expand "' . get_string('reports') . '" node');
-        }
-
-        $steps[] = new Given('I follow "' . get_string('pluginname', 'report_progress') . '"');
-
-        return $steps;
+        return new Given('I navigate to "' . $completionnode . '" node in "' . $reportsnode . '"');
     }
 
+    /**
+     * Toggles completion tracking for course being in the course page.
+     *
+     * @When /^completion tracking is "(?P<completion_status_string>Enabled|Disabled)" in current course$/
+     * @param string $completionstatus The status, enabled or disabled.
+     */
+    public function completion_is_toggled_in_course($completionstatus) {
+
+        $toggle = strtolower($completionstatus) == 'enabled' ? get_string('yes') : get_string('no');
+
+        return array(
+            new Given('I follow "'.get_string('editsettings').'"'),
+            new Given('I set the field "'.get_string('enablecompletion', 'completion').'" to "'.$toggle.'"'),
+            new Given('I press "'.get_string('savechangesanddisplay').'"')
+        );
+    }
+
+    /**
+     * Checks if the activity with specified name is maked as complete.
+     *
+     * @Given /^the "(?P<activityname_string>(?:[^"]|\\")*)" "(?P<activitytype_string>(?:[^"]|\\")*)" activity with "(manual|auto)" completion should be marked as complete$/
+     * @return array
+     */
+    public function activity_marked_as_complete($activityname, $activitytype, $completiontype) {
+        if ($completiontype == "manual") {
+            $imgalttext = get_string("completion-alt-manual-y", 'core_completion', $activityname);
+        } else {
+            $imgalttext = get_string("completion-alt-auto-y", 'core_completion', $activityname);
+        }
+        $csselementforactivitytype = "li.modtype_".strtolower($activitytype);
+
+        return new Given('"//img[contains(@alt, \''.$imgalttext.'\')]" "xpath_element" ' .
+            'should exist in the "'.$csselementforactivitytype.'" "css_element"');
+    }
+
+    /**
+     * Checks if the activity with specified name is maked as complete.
+     *
+     * @Given /^the "(?P<activityname_string>(?:[^"]|\\")*)" "(?P<activitytype_string>(?:[^"]|\\")*)" activity with "(manual|auto)" completion should be marked as not complete$/
+     * @return array
+     */
+    public function activity_marked_as_not_complete($activityname, $activitytype, $completiontype) {
+        if ($completiontype == "manual") {
+            $imgalttext = get_string("completion-alt-manual-n", 'core_completion', $activityname);
+        } else {
+            $imgalttext = get_string("completion-alt-auto-n", 'core_completion', $activityname);
+        }
+        $csselementforactivitytype = "li.modtype_".strtolower($activitytype);
+
+        return new Given('"//img[contains(@alt, \''.$imgalttext.'\')]" "xpath_element" ' .
+            'should exist in the "'.$csselementforactivitytype.'" "css_element"');
+    }
 }

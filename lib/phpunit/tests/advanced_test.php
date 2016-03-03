@@ -72,10 +72,13 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
     }
 
     public function test_set_user() {
-        global $USER, $DB;
+        global $USER, $DB, $SESSION;
+
+        $this->resetAfterTest();
 
         $this->assertEquals(0, $USER->id);
         $this->assertSame($_SESSION['USER'], $USER);
+        $this->assertSame($GLOBALS['USER'], $USER);
 
         $user = $DB->get_record('user', array('id'=>2));
         $this->assertNotEmpty($user);
@@ -83,26 +86,36 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $this->assertEquals(2, $USER->id);
         $this->assertEquals(2, $_SESSION['USER']->id);
         $this->assertSame($_SESSION['USER'], $USER);
+        $this->assertSame($GLOBALS['USER'], $USER);
 
         $USER->id = 3;
         $this->assertEquals(3, $USER->id);
         $this->assertEquals(3, $_SESSION['USER']->id);
         $this->assertSame($_SESSION['USER'], $USER);
+        $this->assertSame($GLOBALS['USER'], $USER);
 
-        session_set_user($user);
+        \core\session\manager::set_user($user);
         $this->assertEquals(2, $USER->id);
         $this->assertEquals(2, $_SESSION['USER']->id);
         $this->assertSame($_SESSION['USER'], $USER);
+        $this->assertSame($GLOBALS['USER'], $USER);
 
         $USER = $DB->get_record('user', array('id'=>1));
         $this->assertNotEmpty($USER);
         $this->assertEquals(1, $USER->id);
         $this->assertEquals(1, $_SESSION['USER']->id);
         $this->assertSame($_SESSION['USER'], $USER);
+        $this->assertSame($GLOBALS['USER'], $USER);
 
         $this->setUser(null);
         $this->assertEquals(0, $USER->id);
         $this->assertSame($_SESSION['USER'], $USER);
+        $this->assertSame($GLOBALS['USER'], $USER);
+
+        // Ensure session is reset after setUser, as it may contain extra info.
+        $SESSION->sometestvalue = true;
+        $this->setUser($user);
+        $this->assertObjectNotHasAttribute('sometestvalue', $SESSION);
     }
 
     public function test_set_admin_user() {
@@ -142,10 +155,11 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
 
         $this->assertEquals(0, $DB->count_records('user_preferences'));
         $originaldisplayid = $DB->insert_record('user_preferences', array('userid'=>2, 'name'=> 'phpunittest', 'value'=>'x'));
-        $this->assertEquals(1, $originaldisplayid);
+        $this->assertEquals(1, $DB->count_records('user_preferences'));
 
+        $numcourses = $DB->count_records('course');
         $course = $this->getDataGenerator()->create_course();
-        $this->assertEquals(2, $course->id);
+        $this->assertEquals($numcourses + 1, $DB->count_records('course'));
 
         $this->assertEquals(2, $DB->count_records('user'));
         $DB->delete_records('user', array('id'=>1));
@@ -155,8 +169,10 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
 
         $this->assertEquals(1, $DB->count_records('course')); // Only frontpage in new site.
         $this->assertEquals(0, $DB->count_records('context_temp')); // Only frontpage in new site.
+
+        $numcourses = $DB->count_records('course');
         $course = $this->getDataGenerator()->create_course();
-        $this->assertEquals(2, $course->id);
+        $this->assertEquals($numcourses + 1, $DB->count_records('course'));
 
         $displayid = $DB->insert_record('user_preferences', array('userid'=>2, 'name'=> 'phpunittest', 'value'=>'x'));
         $this->assertEquals($originaldisplayid, $displayid);
@@ -164,20 +180,23 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $this->assertEquals(2, $DB->count_records('user'));
         $DB->delete_records('user', array('id'=>2));
         $user = $this->getDataGenerator()->create_user();
-        $this->assertEquals(3, $user->id);
+        $this->assertEquals(2, $DB->count_records('user'));
+        $this->assertGreaterThan(2, $user->id);
 
         $this->resetAllData();
 
+        $numcourses = $DB->count_records('course');
         $course = $this->getDataGenerator()->create_course();
-        $this->assertEquals(2, $course->id);
+        $this->assertEquals($numcourses + 1, $DB->count_records('course'));
 
         $this->assertEquals(2, $DB->count_records('user'));
         $DB->delete_records('user', array('id'=>2));
 
         $this->resetAllData();
 
+        $numcourses = $DB->count_records('course');
         $course = $this->getDataGenerator()->create_course();
-        $this->assertEquals(2, $course->id);
+        $this->assertEquals($numcourses + 1, $DB->count_records('course'));
 
         $this->assertEquals(2, $DB->count_records('user'));
     }
@@ -186,13 +205,13 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         global $DB, $CFG, $COURSE, $SITE, $USER;
 
         $this->preventResetByRollback();
-        phpunit_util::reset_all_data(true);
+        self::resetAllData(true);
 
         // Database change.
         $this->assertEquals(1, $DB->get_field('user', 'confirmed', array('id'=>2)));
         $DB->set_field('user', 'confirmed', 0, array('id'=>2));
         try {
-            phpunit_util::reset_all_data(true);
+            self::resetAllData(true);
         } catch (Exception $e) {
             $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
         }
@@ -203,7 +222,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         unset($CFG->admin);
         $CFG->rolesactive = 0;
         try {
-            phpunit_util::reset_all_data(true);
+            self::resetAllData(true);
         } catch (Exception $e) {
             $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
             $this->assertContains('xx', $e->getMessage());
@@ -216,28 +235,28 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
 
         // _GET change.
         $_GET['__somethingthatwillnotnormallybepresent__'] = 'yy';
-        phpunit_util::reset_all_data(true);
+        self::resetAllData(true);
 
         $this->assertEquals(array(), $_GET);
 
         // _POST change.
         $_POST['__somethingthatwillnotnormallybepresent2__'] = 'yy';
-        phpunit_util::reset_all_data(true);
+        self::resetAllData(true);
         $this->assertEquals(array(), $_POST);
 
         // _FILES change.
         $_FILES['__somethingthatwillnotnormallybepresent3__'] = 'yy';
-        phpunit_util::reset_all_data(true);
+        self::resetAllData(true);
         $this->assertEquals(array(), $_FILES);
 
         // _REQUEST change.
         $_REQUEST['__somethingthatwillnotnormallybepresent4__'] = 'yy';
-        phpunit_util::reset_all_data(true);
+        self::resetAllData(true);
         $this->assertEquals(array(), $_REQUEST);
 
         // Silent changes.
         $_SERVER['xx'] = 'yy';
-        phpunit_util::reset_all_data(true);
+        self::resetAllData(true);
         $this->assertFalse(isset($_SERVER['xx']));
 
         // COURSE change.
@@ -245,7 +264,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $COURSE = new stdClass();
         $COURSE->id = 7;
         try {
-            phpunit_util::reset_all_data(true);
+            self::resetAllData(true);
         } catch (Exception $e) {
             $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
             $this->assertEquals(1, $SITE->id);
@@ -256,7 +275,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         // USER change.
         $this->setUser(2);
         try {
-            phpunit_util::reset_all_data(true);
+            self::resetAllData(true);
         } catch (Exception $e) {
             $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
             $this->assertEquals(0, $USER->id);
@@ -334,6 +353,59 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $this->assertTrue($DB->record_exists('user', array('username'=>'onemore')));
     }
 
+    public function test_assert_time_current() {
+        $this->assertTimeCurrent(time());
+
+        $this->setCurrentTimeStart();
+        $this->assertTimeCurrent(time());
+        sleep(2);
+        $this->assertTimeCurrent(time());
+        $this->assertTimeCurrent(time()-1);
+
+        try {
+            $this->setCurrentTimeStart();
+            $this->assertTimeCurrent(time()+10);
+            $this->fail('Failed assert expected');
+        } catch (Exception $e) {
+            $this->assertInstanceOf('PHPUnit_Framework_ExpectationFailedException', $e);
+        }
+
+        try {
+            $this->setCurrentTimeStart();
+            $this->assertTimeCurrent(time()-10);
+            $this->fail('Failed assert expected');
+        } catch (Exception $e) {
+            $this->assertInstanceOf('PHPUnit_Framework_ExpectationFailedException', $e);
+        }
+    }
+
+    public function test_message_processors_reset() {
+        global $DB;
+
+        $this->resetAfterTest(true);
+
+        // Get all processors first.
+        $processors1 = get_message_processors();
+
+        // Add a new message processor and get all processors again.
+        $processor = new stdClass();
+        $processor->name = 'test_processor';
+        $processor->enabled = 1;
+        $DB->insert_record('message_processors', $processor);
+
+        $processors2 = get_message_processors();
+
+        // Assert that new processor still haven't been added to the list.
+        $this->assertSame($processors1, $processors2);
+
+        // Reset message processors data.
+        $processors3 = get_message_processors(false, true);
+        // Now, list of processors should not be the same any more,
+        // And we should have one more message processor in the list.
+        $this->assertNotSame($processors1, $processors3);
+        $this->assertEquals(count($processors1) + 1, count($processors3));
+    }
+
     public function test_message_redirection() {
         $this->preventResetByRollback(); // Messaging is not compatible with transactions...
         $this->resetAfterTest(false);
@@ -352,6 +424,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $message1->fullmessageformat = FORMAT_MARKDOWN;
         $message1->fullmessagehtml   = '<p>message body</p>';
         $message1->smallmessage      = 'small message';
+        $message1->notification      = 0;
 
         $message2 = new stdClass();
         $message2->component         = 'moodle';
@@ -363,8 +436,11 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $message2->fullmessageformat = FORMAT_MARKDOWN;
         $message2->fullmessagehtml   = '<p>message body</p>';
         $message2->smallmessage      = 'small message';
+        $message2->notification      = 0;
 
         // There should be debugging message without redirection.
+        $mailsink = $this->redirectEmails();
+        $mailsink->close();
         message_send($message1);
         $this->assertDebuggingCalled(null, null, 'message_send() must print debug message that messaging is disabled in phpunit tests.');
 
@@ -425,6 +501,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $message3->fullmessageformat = FORMAT_MARKDOWN;
         $message3->fullmessagehtml   = '<p>message body</p>';
         $message3->smallmessage      = 'small message';
+        $message3->notification      = 0;
 
         try {
             message_send($message3);
@@ -470,6 +547,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $message->fullmessageformat = FORMAT_MARKDOWN;
         $message->fullmessagehtml   = '<p>message body</p>';
         $message->smallmessage      = 'small message';
+        $message->notification      = 0;
 
         message_send($message);
         $this->assertEquals(2, $sink->count());
@@ -480,5 +558,94 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
      */
     public function test_message_redirection_reset() {
         $this->assertFalse(phpunit_util::is_redirecting_messages(), 'Test reset must stop message redirection.');
+    }
+
+    public function test_set_timezone() {
+        global $CFG;
+        $this->resetAfterTest();
+
+        $this->assertSame('Australia/Perth', $CFG->timezone);
+        $this->assertSame('Australia/Perth', date_default_timezone_get());
+
+        $this->setTimezone('Pacific/Auckland', 'Europe/Prague');
+        $this->assertSame('Pacific/Auckland', $CFG->timezone);
+        $this->assertSame('Pacific/Auckland', date_default_timezone_get());
+
+        $this->setTimezone('99', 'Europe/Prague');
+        $this->assertSame('99', $CFG->timezone);
+        $this->assertSame('Europe/Prague', date_default_timezone_get());
+
+        $this->setTimezone('xxx', 'Europe/Prague');
+        $this->assertSame('xxx', $CFG->timezone);
+        $this->assertSame('Europe/Prague', date_default_timezone_get());
+
+        $this->setTimezone();
+        $this->assertSame('Australia/Perth', $CFG->timezone);
+        $this->assertSame('Australia/Perth', date_default_timezone_get());
+
+        try {
+            $this->setTimezone('Pacific/Auckland', '');
+        } catch (Exception $e) {
+            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+        }
+
+        try {
+            $this->setTimezone('Pacific/Auckland', 'xxxx');
+        } catch (Exception $e) {
+            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+        }
+
+        try {
+            $this->setTimezone('Pacific/Auckland', null);
+        } catch (Exception $e) {
+            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+        }
+
+    }
+
+    public function test_locale_reset() {
+        global $CFG;
+
+        $this->resetAfterTest();
+
+        // If this fails self::resetAllData(); must be updated.
+        $this->assertSame('en_AU.UTF-8', get_string('locale', 'langconfig'));
+        $this->assertSame('English_Australia.1252', get_string('localewin', 'langconfig'));
+
+        if ($CFG->ostype === 'WINDOWS') {
+            $this->assertSame('English_Australia.1252', setlocale(LC_TIME, 0));
+            setlocale(LC_TIME, 'English_USA.1252');
+        } else {
+            $this->assertSame('en_AU.UTF-8', setlocale(LC_TIME, 0));
+            setlocale(LC_TIME, 'en_US.UTF-8');
+        }
+
+        try {
+            self::resetAllData(true);
+        } catch (Exception $e) {
+            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+        }
+
+        if ($CFG->ostype === 'WINDOWS') {
+            $this->assertSame('English_Australia.1252', setlocale(LC_TIME, 0));
+        } else {
+            $this->assertSame('en_AU.UTF-8', setlocale(LC_TIME, 0));
+        }
+
+        if ($CFG->ostype === 'WINDOWS') {
+            $this->assertSame('English_Australia.1252', setlocale(LC_TIME, 0));
+            setlocale(LC_TIME, 'English_USA.1252');
+        } else {
+            $this->assertSame('en_AU.UTF-8', setlocale(LC_TIME, 0));
+            setlocale(LC_TIME, 'en_US.UTF-8');
+        }
+
+        self::resetAllData(false);
+
+        if ($CFG->ostype === 'WINDOWS') {
+            $this->assertSame('English_Australia.1252', setlocale(LC_TIME, 0));
+        } else {
+            $this->assertSame('en_AU.UTF-8', setlocale(LC_TIME, 0));
+        }
     }
 }

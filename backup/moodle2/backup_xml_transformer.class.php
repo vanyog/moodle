@@ -35,7 +35,7 @@ global $LINKS_ENCODERS_CACHE;
 $LINKS_ENCODERS_CACHE = array();
 
 /**
- * Class implementing the @xml_contenttrasnformed logic to be applied in moodle2 backups
+ * Class implementing the @xml_contenttransformed logic to be applied in moodle2 backups
  *
  * TODO: Finish phpdocs
  */
@@ -61,13 +61,13 @@ class backup_xml_transformer extends xml_contenttransformer {
 
         // Array or object, debug and try our best recursively, shouldn't happen but...
         if (is_array($content)) {
-            debugging('Backup XML transformer should process arrays but plain content always', DEBUG_DEVELOPER);
+            debugging('Backup XML transformer should not process arrays but plain content only', DEBUG_DEVELOPER);
             foreach($content as $key => $plaincontent) {
                 $content[$key] = $this->process($plaincontent);
             }
             return $content;
         } else if (is_object($content)) {
-            debugging('Backup XML transformer should not process objects but plain content always', DEBUG_DEVELOPER);
+            debugging('Backup XML transformer should not process objects but plain content only', DEBUG_DEVELOPER);
             foreach((array)$content as $key => $plaincontent) {
                 $content[$key] = $this->process($plaincontent);
             }
@@ -159,7 +159,7 @@ class backup_xml_transformer extends xml_contenttransformer {
         // Add the module ones. Each module supporting moodle2 backups MUST have it
         $mods = core_component::get_plugin_list('mod');
         foreach ($mods as $mod => $moddir) {
-            if (plugin_supports('mod', $mod, FEATURE_BACKUP_MOODLE2)) {
+            if (plugin_supports('mod', $mod, FEATURE_BACKUP_MOODLE2) && class_exists('backup_' . $mod . '_activity_task')) {
                 $encoders['backup_' . $mod . '_activity_task'] = 'encode_content_links';
             }
         }

@@ -23,34 +23,14 @@
  */
 
 /**
- * Initialise this plugin
- * @param string $elementid
+ * Initialise the js strings required for this plugin
  */
-function atto_media_init_editor($elementid) {
-    global $PAGE, $OUTPUT;
-
-    $icon = $OUTPUT->pix_icon('media',
-                              get_string('media', 'atto_media'),
-                              'atto_media',
-                              array('class'=>'icon'));
+function atto_media_strings_for_js() {
+    global $PAGE;
 
     $PAGE->requires->strings_for_js(array('createmedia',
                                           'enterurl',
                                           'entername',
-                                          'browserepositories',
-                                          'accessibilityhint'),
+                                          'browserepositories'),
                                     'atto_media');
-    $PAGE->requires->yui_module('moodle-atto_media-button',
-                                'M.atto_media.init',
-                                array(array('elementid'=>$elementid, 'icon'=>$icon)),
-                                true);
-
-}
-
-/**
- * Return the order this plugin should be displayed in the toolbar
- * @return int
- */
-function atto_media_sort_order() {
-    return 14;
 }

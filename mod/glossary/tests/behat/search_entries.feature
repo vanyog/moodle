@@ -5,23 +5,22 @@ Feature: Glossary entries can be searched or browsed by alphabet, category, date
   I need to search the entries list by keyword, alphabet, category, date and author
 
   Background:
-    Given the following "users" exists:
+    Given the following "users" exist:
       | username | firstname | lastname | email |
-      | teacher1 | Teacher | 1 | teacher1@asd.com |
-      | student1 | Student | 1 | student1@asd.com |
-    And the following "courses" exists:
+      | teacher1 | Teacher | 1 | teacher1@example.com |
+      | student1 | Student | 1 | student1@example.com |
+    And the following "courses" exist:
       | fullname | shortname | category |
       | Course 1 | C1 | 0 |
-    And the following "course enrolments" exists:
+    And the following "course enrolments" exist:
       | user | course | role |
       | teacher1 | C1 | editingteacher |
       | student1 | C1 | student |
+    And the following "activities" exist:
+      | activity | name               | intro                     | displayformat  | course | idnumber |
+      | glossary | Test glossary name | Test glossary description | fullwithauthor | C1     | g1       |
     And I log in as "teacher1"
     And I follow "Course 1"
-    And I turn editing mode on
-    And I add a "Glossary" to section "1" and I fill the form with:
-      | Name | Test glossary name |
-      | Description | Test glossary description |
     And I follow "Test glossary name"
     And I add a glossary entries category named "The ones I like"
     And I add a glossary entries category named "All for you"
@@ -44,11 +43,10 @@ Feature: Glossary entries can be searched or browsed by alphabet, category, date
 
   @javascript
   Scenario: Search by keyword and browse by alphabet
-    When I fill in "hook" with "cucumber"
+    When I set the field "hook" to "cucumber"
     And I press "Search"
     Then I should see "Sweet cucumber"
     And I should see "Search: cucumber"
-    And I follow "Browse by alphabet"
     And I click on "E" "link" in the ".entrybox" "css_element"
     And I should see "Sour eggplants"
     And I should not see "Sweet cucumber"
@@ -59,10 +57,10 @@ Feature: Glossary entries can be searched or browsed by alphabet, category, date
   @javascript
   Scenario: Browse by category
     When I follow "Browse by category"
-    And I select "The ones I like" from "Categories"
+    And I set the field "Categories" to "The ones I like"
     Then I should see "Sweet cucumber"
     And I should not see "Sour eggplants"
-    And I select "All for you" from "Categories"
+    And I set the field "Categories" to "All for you"
     And I should see "Sour eggplants"
     And I should not see "Sweet cucumber"
 

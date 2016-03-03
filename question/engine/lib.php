@@ -37,6 +37,7 @@ require_once(dirname(__FILE__) . '/bank.php');
 require_once(dirname(__FILE__) . '/../type/questiontypebase.php');
 require_once(dirname(__FILE__) . '/../type/questionbase.php');
 require_once(dirname(__FILE__) . '/../type/rendererbase.php');
+require_once(dirname(__FILE__) . '/../behaviour/behaviourtypebase.php');
 require_once(dirname(__FILE__) . '/../behaviour/behaviourbase.php');
 require_once(dirname(__FILE__) . '/../behaviour/rendererbase.php');
 require_once($CFG->libdir . '/questionlib.php');
@@ -55,6 +56,9 @@ require_once($CFG->libdir . '/questionlib.php');
 abstract class question_engine {
     /** @var array behaviour name => 1. Records which behaviours have been loaded. */
     private static $loadedbehaviours = array();
+
+    /** @var array behaviour name => question_behaviour_type for this behaviour. */
+    private static $behaviourtypes = array();
 
     /**
      * Create a new {@link question_usage_by_activity}. The usage is
@@ -128,6 +132,23 @@ abstract class question_engine {
     }
 
     /**
+     * Validate that the manual grade submitted for a particular question is in range.
+     * @param int $qubaid the question_usage id.
+     * @param int $slot the slot number within the usage.
+     * @return bool whether the submitted data is in range.
+     */
+    public static function is_manual_grade_in_range($qubaid, $slot) {
+        $prefix = 'q' . $qubaid . ':' . $slot . '_';
+        $mark = question_utils::optional_param_mark($prefix . '-mark');
+        $maxmark = optional_param($prefix . '-maxmark', null, PARAM_FLOAT);
+        $minfraction = optional_param($prefix . ':minfraction', null, PARAM_FLOAT);
+        $maxfraction = optional_param($prefix . ':maxfraction', null, PARAM_FLOAT);
+        return $mark === '' ||
+                ($mark !== null && $mark >= $minfraction * $maxmark && $mark <= $maxfraction * $maxmark) ||
+                ($mark === null && $maxmark === null);
+    }
+
+    /**
      * @param array $questionids of question ids.
      * @param qubaid_condition $qubaids ids of the usages to consider.
      * @return boolean whether any of these questions are being used by any of
@@ -142,6 +163,18 @@ abstract class question_engine {
     }
 
     /**
+     * Get the number of times each variant has been used for each question in a list
+     * in a set of usages.
+     * @param array $questionids of question ids.
+     * @param qubaid_condition $qubaids ids of the usages to consider.
+     * @return array questionid => variant number => num uses.
+     */
+    public static function load_used_variants(array $questionids, qubaid_condition $qubaids) {
+        $dm = new question_engine_data_mapper();
+        return $dm->load_used_variants($questionids, $qubaids);
+    }
+
+    /**
      * Create an archetypal behaviour for a particular question attempt.
      * Used by {@link question_definition::make_behaviour()}.
      *
@@ -150,12 +183,13 @@ abstract class question_engine {
      * @return question_behaviour an instance of appropriate behaviour class.
      */
     public static function make_archetypal_behaviour($preferredbehaviour, question_attempt $qa) {
-        self::load_behaviour_class($preferredbehaviour);
-        $class = 'qbehaviour_' . $preferredbehaviour;
-        if (!constant($class . '::IS_ARCHETYPAL')) {
+        if (!self::is_behaviour_archetypal($preferredbehaviour)) {
             throw new coding_exception('The requested behaviour is not actually ' .
                     'an archetypal one.');
         }
+
+        self::load_behaviour_class($preferredbehaviour);
+        $class = 'qbehaviour_' . $preferredbehaviour;
         return new $class($qa, $preferredbehaviour);
     }
 
@@ -165,16 +199,21 @@ abstract class question_engine {
      * not relevant to this behaviour before a 'finish' action.
      */
     public static function get_behaviour_unused_display_options($behaviour) {
-        self::load_behaviour_class($behaviour);
-        $class = 'qbehaviour_' . $behaviour;
-        if (!method_exists($class, 'get_unused_display_options')) {
-            return question_behaviour::get_unused_display_options();
-        }
-        return call_user_func(array($class, 'get_unused_display_options'));
+        return self::get_behaviour_type($behaviour)->get_unused_display_options();
     }
 
     /**
-     * Create an behaviour for a particular type. If that type cannot be
+     * With this behaviour, is it possible that a question might finish as the student
+     * interacts with it, without a call to the {@link question_attempt::finish()} method?
+     * @param string $behaviour the name of a behaviour. E.g. 'deferredfeedback'.
+     * @return bool whether with this behaviour, questions may finish naturally.
+     */
+    public static function can_questions_finish_during_the_attempt($behaviour) {
+        return self::get_behaviour_type($behaviour)->can_questions_finish_during_the_attempt();
+    }
+
+    /**
+     * Create a behaviour for a particular type. If that type cannot be
      * found, return an instance of qbehaviour_missing.
      *
      * Normally you should use {@link make_archetypal_behaviour()}, or
@@ -213,7 +252,65 @@ abstract class question_engine {
             throw new coding_exception('Unknown question behaviour ' . $behaviour);
         }
         include_once($file);
+
+        $class = 'qbehaviour_' . $behaviour;
+        if (!class_exists($class)) {
+            throw new coding_exception('Question behaviour ' . $behaviour .
+                    ' does not define the required class ' . $class . '.');
+        }
+
         self::$loadedbehaviours[$behaviour] = 1;
+    }
+
+    /**
+     * Create a behaviour for a particular type. If that type cannot be
+     * found, return an instance of qbehaviour_missing.
+     *
+     * Normally you should use {@link make_archetypal_behaviour()}, or
+     * call the constructor of a particular model class directly. This method
+     * is only intended for use by {@link question_attempt::load_from_records()}.
+     *
+     * @param string $behaviour the type of model to create.
+     * @param question_attempt $qa the question attempt the model will process.
+     * @param string $preferredbehaviour the preferred behaviour for the containing usage.
+     * @return question_behaviour_type an instance of appropriate behaviour class.
+     */
+    public static function get_behaviour_type($behaviour) {
+
+        if (array_key_exists($behaviour, self::$behaviourtypes)) {
+            return self::$behaviourtypes[$behaviour];
+        }
+
+        self::load_behaviour_type_class($behaviour);
+
+        $class = 'qbehaviour_' . $behaviour . '_type';
+        if (class_exists($class)) {
+            self::$behaviourtypes[$behaviour] = new $class();
+        } else {
+            debugging('Question behaviour ' . $behaviour .
+                    ' does not define the required class ' . $class . '.', DEBUG_DEVELOPER);
+            self::$behaviourtypes[$behaviour] = new question_behaviour_type_fallback($behaviour);
+        }
+
+        return self::$behaviourtypes[$behaviour];
+    }
+
+    /**
+     * Load the behaviour type class for a particular behaviour. That is,
+     * include_once('/question/behaviour/' . $behaviour . '/behaviourtype.php').
+     * @param string $behaviour the behaviour name. For example 'interactive' or 'deferredfeedback'.
+     */
+    protected static function load_behaviour_type_class($behaviour) {
+        global $CFG;
+        if (isset(self::$behaviourtypes[$behaviour])) {
+            return;
+        }
+        $file = $CFG->dirroot . '/question/behaviour/' . $behaviour . '/behaviourtype.php';
+        if (!is_readable($file)) {
+            debugging('Question behaviour ' . $behaviour .
+                    ' is missing the behaviourtype.php file.', DEBUG_DEVELOPER);
+        }
+        include_once($file);
     }
 
     /**
@@ -241,9 +338,7 @@ abstract class question_engine {
      * @return bool whether this is an archetypal behaviour.
      */
     public static function is_behaviour_archetypal($behaviour) {
-        self::load_behaviour_class($behaviour);
-        $plugin = 'qbehaviour_' . $behaviour;
-        return constant($plugin . '::IS_ARCHETYPAL');
+        return self::get_behaviour_type($behaviour)->is_archetypal();
     }
 
     /**
@@ -323,7 +418,7 @@ abstract class question_engine {
     }
 
     /**
-     * Get the translated name of an behaviour, for display in the UI.
+     * Get the translated name of a behaviour, for display in the UI.
      * @param string $behaviour the internal name of the model.
      * @return string name from the current language pack.
      */
@@ -350,7 +445,7 @@ abstract class question_engine {
     /**
      * Returns the valid choices for the number of decimal places for showing
      * question marks. For use in the user interface.
-     * @return array suitable for passing to {@link choose_from_menu()} or similar.
+     * @return array suitable for passing to {@link html_writer::select()} or similar.
      */
     public static function get_dp_options() {
         return question_display_options::get_dp_options();
@@ -499,6 +594,23 @@ class question_display_options {
     public $history = self::HIDDEN;
 
     /**
+     * @since 2.9
+     * @var string extra HTML to include at the end of the outcome (feedback) box
+     * of the question display.
+     *
+     * This field is now badly named. The place it included is was changed
+     * (for the better) but the name was left unchanged for backwards compatibility.
+     */
+    public $extrainfocontent = '';
+
+    /**
+     * @since 2.9
+     * @var string extra HTML to include in the history box of the question display,
+     * if it is shown.
+     */
+    public $extrahistorycontent = '';
+
+    /**
      * If not empty, then a link to edit the question will be included in
      * the info box for the question.
      *
@@ -538,7 +650,7 @@ class question_display_options {
      * Calling code should probably use {@link question_engine::get_dp_options()}
      * rather than calling this method directly.
      *
-     * @return array suitable for passing to {@link choose_from_menu()} or similar.
+     * @return array suitable for passing to {@link html_writer::select()} or similar.
      */
     public static function get_dp_options() {
         $options = array();
@@ -585,7 +697,7 @@ abstract class question_flags {
         $qid = $qa->get_question()->id;
         $slot = $qa->get_slot();
         $checksum = self::get_toggle_checksum($qubaid, $qid, $qaid, $slot);
-        return "qaid=$qaid&qubaid=$qubaid&qid=$qid&slot=$slot&checksum=$checksum&sesskey=" .
+        return "qaid={$qaid}&qubaid={$qubaid}&qid={$qid}&slot={$slot}&checksum={$checksum}&sesskey=" .
                 sesskey() . '&newstate=';
     }
 
@@ -664,7 +776,7 @@ class question_out_of_sequence_exception extends moodle_exception {
             $postdata = data_submitted();
         }
         parent::__construct('submissionoutofsequence', 'question', '', null,
-                "QUBAid: $qubaid, slot: $slot, post data: " . print_r($postdata, true));
+                "QUBAid: {$qubaid}, slot: {$slot}, post data: " . print_r($postdata, true));
     }
 }
 
@@ -796,8 +908,9 @@ abstract class question_utils {
     /**
      * Typically, $mark will have come from optional_param($name, null, PARAM_RAW_TRIMMED).
      * This method copes with:
-     *  - keeping null or '' input unchanged.
-     *  - nubmers that were typed as either 1.00 or 1,00 form.
+     *  - keeping null or '' input unchanged - important to let teaches set a question back to requries grading.
+     *  - numbers that were typed as either 1.00 or 1,00 form.
+     *  - invalid things, which get turned into null.
      *
      * @param string|null $mark raw use input of a mark.
      * @return float|string|null cleaned mark as a float if possible. Otherwise '' or null.
@@ -807,7 +920,13 @@ abstract class question_utils {
             return $mark;
         }
 
-        return clean_param(str_replace(',', '.', $mark), PARAM_FLOAT);
+        $mark = str_replace(',', '.', $mark);
+        // This regexp should match the one in validate_param.
+        if (!preg_match('/^[\+-]?[0-9]*\.?[0-9]*(e[-+]?[0-9]+)?$/i', $mark)) {
+            return null;
+        }
+
+        return clean_param($mark, PARAM_FLOAT);
     }
 
     /**
@@ -886,18 +1005,25 @@ class question_variant_pseudorandom_no_repeats_strategy
     /** @var int the user id the attempt belongs to. */
     protected $userid;
 
+    /** @var string extra input fed into the pseudo-random code. */
+    protected $extrarandomness = '';
+
     /**
      * Constructor.
      * @param int $attemptno The attempt number.
      * @param int $userid the user the attempt is for (defaults to $USER->id).
      */
-    public function __construct($attemptno, $userid = null) {
+    public function __construct($attemptno, $userid = null, $extrarandomness = '') {
         $this->attemptno = $attemptno;
         if (is_null($userid)) {
             global $USER;
             $this->userid = $USER->id;
         } else {
             $this->userid = $userid;
+        }
+
+        if ($extrarandomness) {
+            $this->extrarandomness = '|' . $extrarandomness;
         }
     }
 
@@ -906,9 +1032,75 @@ class question_variant_pseudorandom_no_repeats_strategy
             return 1;
         }
 
-        $hash = sha1($seed . '|user' . $this->userid);
+        $hash = sha1($seed . '|user' . $this->userid . $this->extrarandomness);
         $randint = hexdec(substr($hash, 17, 7));
 
         return ($randint + $this->attemptno) % $maxvariants + 1;
+    }
+}
+
+/**
+ * A {@link question_variant_selection_strategy} designed ONLY for testing.
+ * For selected questions it wil return a specific variants. For the other
+ * slots it will use a fallback strategy.
+ *
+ * @copyright  2013 The Open University
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class question_variant_forced_choices_selection_strategy
+    implements question_variant_selection_strategy {
+
+    /** @var array seed => variant to select. */
+    protected $forcedchoices;
+
+    /** @var question_variant_selection_strategy strategy used to make the non-forced choices. */
+    protected $basestrategy;
+
+    /**
+     * Constructor.
+     * @param array $forcedchoices array seed => variant to select.
+     * @param question_variant_selection_strategy $basestrategy strategy used
+     *      to make the non-forced choices.
+     */
+    public function __construct(array $forcedchoices, question_variant_selection_strategy $basestrategy) {
+        $this->forcedchoices = $forcedchoices;
+        $this->basestrategy  = $basestrategy;
+    }
+
+    public function choose_variant($maxvariants, $seed) {
+        if (array_key_exists($seed, $this->forcedchoices)) {
+            if ($this->forcedchoices[$seed] > $maxvariants) {
+                throw new coding_exception('Forced variant out of range.');
+            }
+            return $this->forcedchoices[$seed];
+        } else {
+            return $this->basestrategy->choose_variant($maxvariants, $seed);
+        }
+    }
+
+    /**
+     * Helper method for preparing the $forcedchoices array.
+     * @param array                      $variantsbyslot slot number => variant to select.
+     * @param question_usage_by_activity $quba           the question usage we need a strategy for.
+     * @throws coding_exception when variant cannot be forced as doesn't work.
+     * @return array that can be passed to the constructor as $forcedchoices.
+     */
+    public static function prepare_forced_choices_array(array $variantsbyslot,
+                                                        question_usage_by_activity $quba) {
+
+        $forcedchoices = array();
+
+        foreach ($variantsbyslot as $slot => $varianttochoose) {
+            $question = $quba->get_question($slot);
+            $seed = $question->get_variants_selection_seed();
+            if (array_key_exists($seed, $forcedchoices) && $forcedchoices[$seed] != $varianttochoose) {
+                throw new coding_exception('Inconsistent forced variant detected at slot ' . $slot);
+            }
+            if ($varianttochoose > $question->get_num_variants()) {
+                throw new coding_exception('Forced variant out of range at slot ' . $slot);
+            }
+            $forcedchoices[$seed] = $varianttochoose;
+        }
+        return $forcedchoices;
     }
 }

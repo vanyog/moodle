@@ -68,7 +68,7 @@ class cache_config_writer extends cache_config {
      */
     protected function config_save() {
         global $CFG;
-        $cachefile = self::get_config_file_path();
+        $cachefile = static::get_config_file_path();
         $directory = dirname($cachefile);
         if ($directory !== $CFG->dataroot && !file_exists($directory)) {
             $result = make_writable_directory($directory, false);
@@ -709,7 +709,8 @@ abstract class cache_administration_helper extends cache_helper {
                     'nativelocking' => ($store instanceof cache_is_lockable),
                     'keyawareness' => ($store instanceof cache_is_key_aware),
                     'searchable' => ($store instanceof cache_is_searchable)
-                )
+                ),
+                'warnings' => $store->get_warnings()
             );
             if (empty($details['default'])) {
                 $return[$name] = $record;
@@ -778,63 +779,36 @@ abstract class cache_administration_helper extends cache_helper {
      * @return array
      */
     public static function get_definition_summaries() {
-        $instance = cache_config::instance();
-        $definitions = $instance->get_definitions();
-
+        $factory = cache_factory::instance();
+        $config = $factory->create_config_instance();
         $storenames = array();
-        foreach ($instance->get_all_stores() as $key => $store) {
+        foreach ($config->get_all_stores() as $key => $store) {
             if (!empty($store['default'])) {
                 $storenames[$key] = new lang_string('store_'.$key, 'cache');
-            }
-        }
-
-        $modemappings = array();
-        foreach ($instance->get_mode_mappings() as $mapping) {
-            $mode = $mapping['mode'];
-            if (!array_key_exists($mode, $modemappings)) {
-                $modemappings[$mode] = array();
-            }
-            if (array_key_exists($mapping['store'], $storenames)) {
-                $modemappings[$mode][] = $storenames[$mapping['store']];
             } else {
-                $modemappings[$mode][] = $mapping['store'];
+                $storenames[$store['name']] = $store['name'];
             }
         }
-
-        $definitionmappings = array();
-        foreach ($instance->get_definition_mappings() as $mapping) {
-            $definition = $mapping['definition'];
-            if (!array_key_exists($definition, $definitionmappings)) {
-                $definitionmappings[$definition] = array();
-            }
-            if (array_key_exists($mapping['store'], $storenames)) {
-                $definitionmappings[$definition][] = $storenames[$mapping['store']];
-            } else {
-                $definitionmappings[$definition][] = $mapping['store'];
-            }
+        /* @var cache_definition[] $definitions */
+        $definitions = array();
+        foreach ($config->get_definitions() as $key => $definition) {
+            $definitions[$key] = cache_definition::load($definition['component'].'/'.$definition['area'], $definition);
         }
-
-        $return = array();
-
         foreach ($definitions as $id => $definition) {
-
             $mappings = array();
-            if (array_key_exists($id, $definitionmappings)) {
-                $mappings = $definitionmappings[$id];
-            } else if (empty($definition['mappingsonly'])) {
-                $mappings = $modemappings[$definition['mode']];
+            foreach (cache_helper::get_stores_suitable_for_definition($definition) as $store) {
+                $mappings[] = $storenames[$store->my_name()];
             }
-
             $return[$id] = array(
                 'id' => $id,
-                'name' => cache_helper::get_definition_name($definition),
-                'mode' => $definition['mode'],
-                'component' => $definition['component'],
-                'area' => $definition['area'],
+                'name' => $definition->get_name(),
+                'mode' => $definition->get_mode(),
+                'component' => $definition->get_component(),
+                'area' => $definition->get_area(),
                 'mappings' => $mappings,
-                'sharingoptions' => self::get_definition_sharing_options($definition['sharingoptions'], false),
-                'selectedsharingoption' => self::get_definition_sharing_options($definition['selectedsharingoption'], true),
-                'userinputsharingkey' => $definition['userinputsharingkey']
+                'sharingoptions' => self::get_definition_sharing_options($definition->get_sharing_options(), false),
+                'selectedsharingoption' => self::get_definition_sharing_options($definition->get_selected_sharing_option(), true),
+                'userinputsharingkey' => $definition->get_user_input_sharing_key()
             );
         }
         return $return;
@@ -1126,7 +1100,10 @@ abstract class cache_administration_helper extends cache_helper {
      * @return array An array containing sub-arrays, one for each mode.
      */
     public static function get_default_mode_stores() {
+        global $OUTPUT;
         $instance = cache_config::instance();
+        $adequatestores = cache_helper::get_stores_suitable_for_mode_default();
+        $icon = new pix_icon('i/warning', new lang_string('inadequatestoreformapping', 'cache'));
         $storenames = array();
         foreach ($instance->get_all_stores() as $key => $store) {
             if (!empty($store['default'])) {
@@ -1148,6 +1125,9 @@ abstract class cache_administration_helper extends cache_helper {
                 $modemappings[$mode][$mapping['store']] = $storenames[$mapping['store']];
             } else {
                 $modemappings[$mode][$mapping['store']] = $mapping['store'];
+            }
+            if (!array_key_exists($mapping['store'], $adequatestores)) {
+                $modemappings[$mode][$mapping['store']] = $modemappings[$mode][$mapping['store']].' '.$OUTPUT->render($icon);
             }
         }
         return $modemappings;

@@ -57,7 +57,11 @@ if (empty($component) or $component === 'moodle' or $component === 'core') {
     $component = 'core';
 }
 
-if (preg_match('/^[a-z0-9_-]+\.woff$/i', $font, $matches)) {
+if (preg_match('/^[a-z0-9_-]+\.woff2$/i', $font, $matches)) {
+    $font = $matches[0];
+    $mimetype = 'application/font-woff2';
+
+} else if (preg_match('/^[a-z0-9_-]+\.woff$/i', $font, $matches)) {
     // This is the real standard!
     $font = $matches[0];
     $mimetype = 'application/font-woff';
@@ -70,10 +74,13 @@ if (preg_match('/^[a-z0-9_-]+\.woff$/i', $font, $matches)) {
     $font = $matches[0];
     $mimetype = 'application/x-font-opentype';
 
-} else if (preg_match('/^[a-z0-9_-]+\.oet$/i', $font, $matches)) {
+} else if (preg_match('/^[a-z0-9_-]+\.eot$/i', $font, $matches)) {
     // IE8 must die!!!
     $font = $matches[0];
     $mimetype = 'application/vnd.ms-fontobject';
+} else if (preg_match('/^[a-z0-9_-]+\.svg$/i', $font, $matches)) {
+    $font = $matches[0];
+    $mimetype = 'image/svg+xml';
 
 } else {
     font_not_found();

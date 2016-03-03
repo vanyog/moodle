@@ -42,6 +42,9 @@ class qtype_calculatedmulti extends qtype_calculated {
         global $CFG, $DB;
         $context = $question->context;
 
+        // Make it impossible to save bad formulas anywhere.
+        $this->validate_question_data($question);
+
         // Calculated options.
         $update = true;
         $options = $DB->get_record('question_calculated_options',
@@ -72,10 +75,7 @@ class qtype_calculatedmulti extends qtype_calculated {
         }
 
         // Insert all the new answers.
-        if (isset($question->answer) && !isset($question->answers)) {
-            $question->answers = $question->answer;
-        }
-        foreach ($question->answers as $key => $answerdata) {
+        foreach ($question->answer as $key => $answerdata) {
             if (is_array($answerdata)) {
                 $answerdata = $answerdata['text'];
             }
@@ -156,6 +156,20 @@ class qtype_calculatedmulti extends qtype_calculated {
         return true;
     }
 
+    protected function validate_answer($answer) {
+        $error = qtype_calculated_find_formula_errors_in_text($answer);
+        if ($error) {
+            throw new coding_exception($error);
+        }
+    }
+
+    protected function validate_question_data($question) {
+        parent::validate_question_data($question);
+        $this->validate_text($question->correctfeedback['text']);
+        $this->validate_text($question->partiallycorrectfeedback['text']);
+        $this->validate_text($question->incorrectfeedback['text']);
+    }
+
     protected function make_question_instance($questiondata) {
         question_bank::load_question_definition_classes($this->name());
         if ($questiondata->options->single) {
@@ -188,6 +202,17 @@ class qtype_calculatedmulti extends qtype_calculated {
         }
 
         $question->datasetloader = new qtype_calculated_dataset_loader($questiondata->id);
+    }
+
+    /**
+     * Public override method, created so that make_answer will be available
+     * for use by classes which extend qtype_multichoice_base.
+     *
+     * @param stdClass $answer  Moodle DB question_answers object.
+     * @return question_answer
+     */
+    public function make_answer($answer) {
+        return parent::make_answer($answer);
     }
 
     public function comment_header($question) {

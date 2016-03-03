@@ -19,7 +19,7 @@
  *
  * @author Andreas Grabs
  * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
- * @package feedback
+ * @package mod_feedback
  */
 
 //It must be included from a Moodle page
@@ -28,29 +28,6 @@ if (!defined('MOODLE_INTERNAL')) {
 }
 
 require_once($CFG->libdir.'/formslib.php');
-
-class feedback_edit_add_question_form extends moodleform {
-    public function definition() {
-        $mform = $this->_form;
-
-        //headline
-        $mform->addElement('header', 'general', get_string('content'));
-        // visible elements
-        $feedback_names_options = feedback_load_feedback_items_options();
-
-        $attributes = 'onChange="M.core_formchangechecker.set_form_submitted(); this.form.submit()"';
-        $mform->addElement('select', 'typ', '', $feedback_names_options, $attributes);
-
-        // hidden elements
-        $mform->addElement('hidden', 'cmid');
-        $mform->setType('cmid', PARAM_INT);
-        $mform->addElement('hidden', 'position');
-        $mform->setType('position', PARAM_INT);
-
-        // buttons
-        $mform->addElement('submit', 'add_item', get_string('add_item', 'feedback'), array('class' => 'hiddenifjs'));
-    }
-}
 
 class feedback_edit_use_template_form extends moodleform {
     private $feedbackdata;

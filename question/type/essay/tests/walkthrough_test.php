@@ -73,6 +73,12 @@ class qtype_essay_walkthrough_testcase extends qbehaviour_walkthrough_test_base 
     }
 
     public function test_deferred_feedback_html_editor() {
+        global $PAGE;
+
+        // The current text editor depends on the users profile setting - so it needs a valid user.
+        $this->setAdminUser();
+        // Required to init a text editor.
+        $PAGE->set_url('/');
 
         // Create an essay question.
         $q = test_question_maker::make_question('essay', 'editor');
@@ -177,6 +183,12 @@ class qtype_essay_walkthrough_testcase extends qbehaviour_walkthrough_test_base 
     }
 
     public function test_responsetemplate() {
+        global $PAGE;
+
+        // The current text editor depends on the users profile setting - so it needs a valid user.
+        $this->setAdminUser();
+        // Required to init a text editor.
+        $PAGE->set_url('/');
 
         // Create an essay question.
         $q = test_question_maker::make_question('essay', 'responsetemplate');
@@ -228,10 +240,12 @@ class qtype_essay_walkthrough_testcase extends qbehaviour_walkthrough_test_base 
     }
 
     public function test_deferred_feedback_html_editor_with_files_attempt_on_last() {
-        global $CFG, $USER;
+        global $CFG, $USER, $PAGE;
 
         $this->resetAfterTest(true);
         $this->setAdminUser();
+        // Required to init a text editor.
+        $PAGE->set_url('/');
         $usercontextid = context_user::instance($USER->id)->id;
         $fs = get_file_storage();
 
@@ -350,10 +364,12 @@ class qtype_essay_walkthrough_testcase extends qbehaviour_walkthrough_test_base 
     }
 
     public function test_deferred_feedback_html_editor_with_files_attempt_on_last_no_files_uploaded() {
-        global $CFG, $USER;
+        global $CFG, $USER, $PAGE;
 
         $this->resetAfterTest(true);
         $this->setAdminUser();
+        // Required to init a text editor.
+        $PAGE->set_url('/');
         $usercontextid = context_user::instance($USER->id)->id;
         $fs = get_file_storage();
 
@@ -420,5 +436,69 @@ class qtype_essay_walkthrough_testcase extends qbehaviour_walkthrough_test_base 
         $this->load_quba();
         $this->render();
         $this->assertRegExp('/I refuse to draw you a picture, so there!/', $this->currentoutput);
+    }
+
+    public function test_deferred_feedback_plain_attempt_on_last() {
+        global $CFG, $USER;
+
+        $this->resetAfterTest(true);
+        $this->setAdminUser();
+        $usercontextid = context_user::instance($USER->id)->id;
+
+        // Create an essay question in the DB.
+        $generator = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $cat = $generator->create_question_category();
+        $question = $generator->create_question('essay', 'plain', array('category' => $cat->id));
+
+        // Start attempt at the question.
+        $q = question_bank::load_question($question->id);
+        $this->start_attempt_at_question($q, 'deferredfeedback', 1);
+
+        $this->check_current_state(question_state::$todo);
+        $this->check_current_mark(null);
+        $this->check_step_count(1);
+
+        // Process a response and check the expected result.
+
+        $this->process_submission(array(
+            'answer' => 'Once upon a time there was a frog called Freddy. He lived happily ever after.',
+            'answerformat' => FORMAT_PLAIN,
+        ));
+
+        $this->check_current_state(question_state::$complete);
+        $this->check_current_mark(null);
+        $this->check_step_count(2);
+        $this->save_quba();
+
+        // Now submit all and finish.
+        $this->finish();
+        $this->check_current_state(question_state::$needsgrading);
+        $this->check_current_mark(null);
+        $this->check_step_count(3);
+        $this->save_quba();
+
+        // Now start a new attempt based on the old one.
+        $this->load_quba();
+        $oldqa = $this->get_question_attempt();
+
+        $q = question_bank::load_question($question->id);
+        $this->quba = question_engine::make_questions_usage_by_activity('unit_test',
+                context_system::instance());
+        $this->quba->set_preferred_behaviour('deferredfeedback');
+        $this->slot = $this->quba->add_question($q, 1);
+        $this->quba->start_question_based_on($this->slot, $oldqa);
+
+        $this->check_current_state(question_state::$complete);
+        $this->check_current_mark(null);
+        $this->check_step_count(1);
+        $this->save_quba();
+
+        // Check the display.
+        $this->load_quba();
+        $this->render();
+        // Test taht no HTML comment has been added to the response.
+        $this->assertRegExp('/Once upon a time there was a frog called Freddy. He lived happily ever after.(?!&lt;!--)/', $this->currentoutput);
+        // Test for the hash of an empty file area.
+        $this->assertNotContains('d41d8cd98f00b204e9800998ecf8427e', $this->currentoutput);
     }
 }

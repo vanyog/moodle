@@ -40,23 +40,19 @@
 // Please do not forget to use upgrade_set_timeout()
 // before any action that may take longer time to finish.
 
+defined('MOODLE_INTERNAL') || die();
+
 function xmldb_enrol_paypal_upgrade($oldversion) {
-    global $CFG, $DB;
+    global $CFG;
 
-    $dbman = $DB->get_manager();
-
-
-    // Moodle v2.3.0 release upgrade line
-    // Put any upgrade step following this
-
-
-    // Moodle v2.4.0 release upgrade line
-    // Put any upgrade step following this
-
-
-    // Moodle v2.5.0 release upgrade line.
+    // Moodle v2.8.0 release upgrade line.
     // Put any upgrade step following this.
 
+    // Moodle v2.9.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Moodle v3.0.0 release upgrade line.
+    // Put any upgrade step following this.
 
     return true;
 }

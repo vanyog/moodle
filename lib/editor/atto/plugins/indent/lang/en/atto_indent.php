@@ -23,4 +23,5 @@
  */
 
 $string['pluginname'] = 'Indent';
-$string['indent'] = 'Indent';
+$string['indent'] = "Indent";
+$string['outdent'] = "Outdent";

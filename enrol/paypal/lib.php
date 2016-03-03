@@ -38,7 +38,7 @@ class enrol_paypal_plugin extends enrol_plugin {
         // 3-character ISO-4217: https://cms.paypal.com/us/cgi-bin/?cmd=_render-content&content_ID=developer/e_howto_api_currency_codes
         $codes = array(
             'AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY',
-            'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD');
+            'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD');
         $currencies = array();
         foreach ($codes as $c) {
             $currencies[$c] = new lang_string($c, 'core_currencies');
@@ -60,7 +60,21 @@ class enrol_paypal_plugin extends enrol_plugin {
      * @return array of pix_icon
      */
     public function get_info_icons(array $instances) {
-        return array(new pix_icon('icon', get_string('pluginname', 'enrol_paypal'), 'enrol_paypal'));
+        $found = false;
+        foreach ($instances as $instance) {
+            if ($instance->enrolstartdate != 0 && $instance->enrolstartdate > time()) {
+                continue;
+            }
+            if ($instance->enrolenddate != 0 && $instance->enrolenddate < time()) {
+                continue;
+            }
+            $found = true;
+            break;
+        }
+        if ($found) {
+            return array(new pix_icon('icon', get_string('pluginname', 'enrol_paypal'), 'enrol_paypal'));
+        }
+        return array();
     }
 
     public function roles_protected() {
@@ -306,5 +320,27 @@ class enrol_paypal_plugin extends enrol_plugin {
     public function sync(progress_trace $trace) {
         $this->process_expirations($trace);
         return 0;
+    }
+
+    /**
+     * Is it possible to delete enrol instance via standard UI?
+     *
+     * @param stdClass $instance
+     * @return bool
+     */
+    public function can_delete_instance($instance) {
+        $context = context_course::instance($instance->courseid);
+        return has_capability('enrol/paypal:config', $context);
+    }
+
+    /**
+     * Is it possible to hide/show enrol instance via standard UI?
+     *
+     * @param stdClass $instance
+     * @return bool
+     */
+    public function can_hide_show_instance($instance) {
+        $context = context_course::instance($instance->courseid);
+        return has_capability('enrol/paypal:config', $context);
     }
 }

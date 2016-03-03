@@ -29,11 +29,18 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * User login event class.
  *
+ * @property-read array $other {
+ *      Extra information about event.
+ *
+ *      - string username: name of user.
+ * }
+ *
  * @package    core
+ * @since      Moodle 2.6
  * @copyright  2013 Frédéric Massart
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class user_loggedin extends \core\event\base {
+class user_loggedin extends base {
 
     /**
      * Returns non-localised event description with id's for admin use only.
@@ -41,7 +48,7 @@ class user_loggedin extends \core\event\base {
      * @return string
      */
     public function get_description() {
-        return 'Userid ' . $this->userid . ' has logged in';
+        return "The user with id '$this->userid' has logged in.";
     }
 
     /**
@@ -50,7 +57,7 @@ class user_loggedin extends \core\event\base {
      * @return array
      */
     protected function get_legacy_logdata() {
-        return array(SITEID, 'user', 'login', "view.php?id=" . $this->data['objectid'] . "&course=".SITEID,
+        return array(SITEID, 'user', 'login', 'view.php?id=' . $this->data['objectid'] . '&course=' . SITEID,
             $this->data['objectid'], 0, $this->data['objectid']);
     }
 
@@ -60,7 +67,7 @@ class user_loggedin extends \core\event\base {
      * @return string
      */
     public static function get_name() {
-        return get_string('event_user_loggedin', 'auth');
+        return get_string('eventuserloggedin', 'auth');
     }
 
     /**
@@ -78,7 +85,7 @@ class user_loggedin extends \core\event\base {
      * @return string
      */
     public function get_username() {
-        return $this->data['other']['username'];
+        return $this->other['username'];
     }
 
     /**
@@ -89,22 +96,29 @@ class user_loggedin extends \core\event\base {
     protected function init() {
         $this->context = \context_system::instance();
         $this->data['crud'] = 'r';
-        $this->data['level'] = self::LEVEL_OTHER;
+        $this->data['edulevel'] = self::LEVEL_OTHER;
         $this->data['objecttable'] = 'user';
     }
 
     /**
      * Custom validation.
      *
-     * @throws coding_exception when validation does not pass.
+     * @throws \coding_exception when validation does not pass.
      * @return void
      */
     protected function validate_data() {
-        if (!isset($this->data['objectid'])) {
-            throw new \coding_exception("objectid has to be specified.");
-        } else if (!isset($this->data['other']['username'])) {
-            throw new \coding_exception("other['username'] has to be specified.");
+        parent::validate_data();
+
+        if (!isset($this->other['username'])) {
+            throw new \coding_exception('The \'username\' value must be set in other.');
         }
     }
 
+    public static function get_objectid_mapping() {
+        return array('db' => 'user', 'restore' => 'user');
+    }
+
+    public static function get_other_mapping() {
+        return false;
+    }
 }

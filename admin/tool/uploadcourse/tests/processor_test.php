@@ -36,6 +36,13 @@ require_once($CFG->libdir . '/csvlib.class.php');
  */
 class tool_uploadcourse_processor_testcase extends advanced_testcase {
 
+    /**
+     * Tidy up open files that may be left open.
+     */
+    protected function tearDown() {
+        gc_collect_cycles();
+    }
+
     public function test_basic() {
         global $DB;
         $this->resetAfterTest(true);
@@ -96,9 +103,6 @@ class tool_uploadcourse_processor_testcase extends advanced_testcase {
             }
         }
         $this->assertTrue($found);
-
-        // Restore the time limit to prevent warning.
-        set_time_limit(0);
     }
 
     public function test_restore_restore_file() {
@@ -136,9 +140,6 @@ class tool_uploadcourse_processor_testcase extends advanced_testcase {
             }
         }
         $this->assertTrue($found);
-
-        // Restore the time limit to prevent warning.
-        set_time_limit(0);
     }
 
     public function test_shortname_template() {

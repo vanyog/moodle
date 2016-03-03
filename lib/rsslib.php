@@ -80,9 +80,12 @@ function rss_get_link($contextid, $userid, $componentname, $id, $tooltiptext='')
  */
 function rss_get_url($contextid, $userid, $componentname, $additionalargs) {
     global $CFG;
-    require_once($CFG->libdir.'/filelib.php');
+    if (empty($userid)) {
+        $userid = guest_user()->id;
+    }
     $usertoken = rss_get_token($userid);
-    return get_file_url($contextid.'/'.$usertoken.'/'.$componentname.'/'.$additionalargs.'/rss.xml', null, 'rssfile');
+    $url = '/rss/file.php';
+    return moodle_url::make_file_url($url, '/'.$contextid.'/'.$usertoken.'/'.$componentname.'/'.$additionalargs.'/rss.xml');
 }
 
 /**
@@ -216,7 +219,7 @@ function rss_get_file_name($instance, $sql, $params = array()) {
         // serialize it and then concatenate it with the sql.
         // The reason for this is to generate a unique filename
         // for queries using the same sql but different parameters.
-        asort($parms);
+        asort($params);
         $serializearray = serialize($params);
         return $instance->id.'_'.md5($sql . $serializearray);
     } else {
@@ -355,21 +358,15 @@ function rss_add_items($items) {
 }
 
 /**
- * This function return all the common footers for every rss feed in the site
+ * This function return all the common footers for every rss feed in the site.
  *
- * @param string $title       Not used at all
- * @param string $link        Not used at all
- * @param string $description Not used at all
- * @todo  MDL-31050 Fix/Remove this function
  * @return string
  */
-function rss_standard_footer($title = NULL, $link = NULL, $description = NULL) {
+function rss_standard_footer() {
     $status = true;
     $result = '';
 
-    //Close the chanel
     $result .= rss_end_tag('channel', 1, true);
-    ////Close the rss tag
     $result .= '</rss>';
 
     return $result;

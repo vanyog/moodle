@@ -74,8 +74,16 @@ abstract class core_role_capability_table_base {
     public function display() {
         if (count($this->capabilities) > self::NUM_CAPS_FOR_SEARCH) {
             global $PAGE;
-            $PAGE->requires->strings_for_js(array('filter', 'clear'), 'moodle');
-            $PAGE->requires->js_init_call('M.core_role.init_cap_table_filter', array($this->id, $this->context->id));
+            $jsmodule = array(
+                'name' => 'rolescapfilter',
+                'fullpath' => '/admin/roles/module.js',
+                'strings' => array(
+                    array('filter', 'moodle'),
+                    array('clear', 'moodle'),                ),
+                'requires' => array('node', 'cookie', 'escape')
+            );
+            $PAGE->requires->js_init_call('M.core_role.init_cap_table_filter', array($this->id, $this->context->id), false,
+                $jsmodule);
         }
         echo '<table class="' . implode(' ', $this->classes) . '" id="' . $this->id . '">' . "\n<thead>\n";
         echo '<tr><th class="name" align="left" scope="col">' . get_string('capability', 'core_role') . '</th>';
@@ -98,18 +106,22 @@ abstract class core_role_capability_table_base {
             $component = $capability->component;
 
             // Start the row.
-            echo '<tr class="' . implode(' ', array_unique(array_merge(array('rolecap'),
-                    $this->get_row_classes($capability)))) . '">';
+            $rowattributes = $this->get_row_attributes($capability);
+            // Handle class attributes same as other.
+            $rowclasses = array_unique(array_merge(array('rolecap'), $this->get_row_classes($capability)));
+            if (array_key_exists('class', $rowattributes)) {
+                $rowclasses = array_unique(array_merge($rowclasses, array($rowattributes['class'])));
+            }
+            $rowattributes['class']  = implode(' ', $rowclasses);
 
             // Table cell for the capability name.
-            echo '<th scope="row" class="name"><span class="cap-desc">' . get_capability_docs_link($capability) .
+            $contents = '<th scope="row" class="name"><span class="cap-desc">' . get_capability_docs_link($capability) .
                 '<span class="cap-name">' . $capability->name . '</span></span></th>';
 
             // Add the cells specific to this table.
-            $this->add_row_cells($capability);
+            $contents .= $this->add_row_cells($capability);
 
-            // End the row.
-            echo "</tr>\n";
+            echo html_writer::tag('tr', $contents, $rowattributes);
         }
 
         // End of the table.
@@ -160,12 +172,24 @@ abstract class core_role_capability_table_base {
     }
 
     /**
+     * For subclasses to override. Additional attributes to be added to
+     * each table row for the capability
+     *
+     * @param stdClass $capability the capability this row relates to.
+     * @return array attribute names and their values.
+     */
+    protected function get_row_attributes($capability) {
+        return array();
+    }
+
+    /**
      * For subclasses to override. Output the data cells for this capability. The
      * capability name cell will already have been output.
      *
      * You can rely on get_row_classes always being called before add_row_cells.
      *
      * @param stdClass $capability the capability this row relates to.
+     * @return string html of row cells
      */
     protected abstract function add_row_cells($capability);
 }

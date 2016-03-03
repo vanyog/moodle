@@ -77,196 +77,233 @@ function upgrade_mysql_get_supported_tables() {
 }
 
 /**
- * Remove all signed numbers from current database and change
- * text fields to long texts - mysql only.
+ * Using data for a single course-module that has groupmembersonly enabled,
+ * returns the new availability value that incorporates the correct
+ * groupmembersonly option.
+ *
+ * Included as a function so that it can be shared between upgrade and restore,
+ * and unit-tested.
+ *
+ * @param int $groupingid Grouping id for the course-module (0 if none)
+ * @param string $availability Availability JSON data for the module (null if none)
+ * @return string New value for availability for the module
  */
-function upgrade_mysql_fix_unsigned_and_lob_columns() {
-    // We are not using standard API for changes of column
-    // because everything 'signed'-related will be removed soon.
-
-    // If anybody already has numbers higher than signed limit the execution stops
-    // and tables must be fixed manually before continuing upgrade.
-
-    global $DB;
-
-    if ($DB->get_dbfamily() !== 'mysql') {
-        return;
+function upgrade_group_members_only($groupingid, $availability) {
+    // Work out the new JSON object representing this option.
+    if ($groupingid) {
+        // Require specific grouping.
+        $condition = (object)array('type' => 'grouping', 'id' => (int)$groupingid);
+    } else {
+        // No grouping specified, so require membership of any group.
+        $condition = (object)array('type' => 'group');
     }
 
-    $pbar = new progress_bar('mysqlconvertunsignedlobs', 500, true);
-
-    $prefix = $DB->get_prefix();
-    $tables = upgrade_mysql_get_supported_tables();
-
-    $tablecount = count($tables);
-    $i = 0;
-    foreach ($tables as $table) {
-        $i++;
-
-        $changes = array();
-
-        $sql = "SHOW COLUMNS FROM `{{$table}}`";
-        $rs = $DB->get_recordset_sql($sql);
-        foreach ($rs as $column) {
-            $column = (object)array_change_key_case((array)$column, CASE_LOWER);
-            if (stripos($column->type, 'unsigned') !== false) {
-                $maxvalue = 0;
-                if (preg_match('/^int/i', $column->type)) {
-                    $maxvalue = 2147483647;
-                } else if (preg_match('/^medium/i', $column->type)) {
-                    $maxvalue = 8388607;
-                } else if (preg_match('/^smallint/i', $column->type)) {
-                    $maxvalue = 32767;
-                } else if (preg_match('/^tinyint/i', $column->type)) {
-                    $maxvalue = 127;
-                }
-                if ($maxvalue) {
-                    // Make sure nobody is abusing our integer ranges - moodle int sizes are in digits, not bytes!!!
-                    $invalidcount = $DB->get_field_sql("SELECT COUNT('x') FROM `{{$table}}` WHERE `$column->field` > :maxnumber", array('maxnumber'=>$maxvalue));
-                    if ($invalidcount) {
-                        throw new moodle_exception('notlocalisederrormessage', 'error', new moodle_url('/admin/'), "Database table '{$table}'' contains unsigned column '{$column->field}' with $invalidcount values that are out of allowed range, upgrade can not continue.");
-                    }
-                }
-                $type = preg_replace('/unsigned/i', 'signed', $column->type);
-                $notnull = ($column->null === 'NO') ? 'NOT NULL' : 'NULL';
-                $default = (!is_null($column->default) and $column->default !== '') ? "DEFAULT '$column->default'" : '';
-                $autoinc = (stripos($column->extra, 'auto_increment') !== false) ? 'AUTO_INCREMENT' : '';
-                // Primary and unique not necessary here, change_database_structure does not add prefix.
-                $changes[] = "MODIFY COLUMN `$column->field` $type $notnull $default $autoinc";
-
-            } else if ($column->type === 'tinytext' or $column->type === 'mediumtext' or $column->type === 'text') {
-                $notnull = ($column->null === 'NO') ? 'NOT NULL' : 'NULL';
-                $default = (!is_null($column->default) and $column->default !== '') ? "DEFAULT '$column->default'" : '';
-                // Primary, unique and inc are not supported for texts.
-                $changes[] = "MODIFY COLUMN `$column->field` LONGTEXT $notnull $default";
-
-            } else if ($column->type === 'tinyblob' or $column->type === 'mediumblob' or $column->type === 'blob') {
-                $notnull = ($column->null === 'NO') ? 'NOT NULL' : 'NULL';
-                $default = (!is_null($column->default) and $column->default !== '') ? "DEFAULT '$column->default'" : '';
-                // Primary, unique and inc are not supported for blobs.
-                $changes[] = "MODIFY COLUMN `$column->field` LONGBLOB $notnull $default";
-            }
-
+    if (is_null($availability)) {
+        // If there are no conditions using the new API then just set it.
+        $tree = (object)array('op' => '&', 'c' => array($condition), 'showc' => array(false));
+    } else {
+        // There are existing conditions.
+        $tree = json_decode($availability);
+        switch ($tree->op) {
+            case '&' :
+                // For & conditions we can just add this one.
+                $tree->c[] = $condition;
+                $tree->showc[] = false;
+                break;
+            case '!|' :
+                // For 'not or' conditions we can add this one
+                // but negated.
+                $tree->c[] = (object)array('op' => '!&', 'c' => array($condition));
+                $tree->showc[] = false;
+                break;
+            default:
+                // For the other two (OR and NOT AND) we have to add
+                // an extra level to the tree.
+                $tree = (object)array('op' => '&', 'c' => array($tree, $condition),
+                        'showc' => array($tree->show, false));
+                // Inner trees do not have a show option, so remove it.
+                unset($tree->c[0]->show);
+                break;
         }
-        $rs->close();
+    }
 
-        if ($changes) {
-            // Set appropriate timeout - 1 minute per thousand of records should be enough, min 60 minutes just in case.
-            $count = $DB->count_records($table, array());
-            $timeout = ($count/1000)*60;
-            $timeout = ($timeout < 60*60) ? 60*60 : (int)$timeout;
-            upgrade_set_timeout($timeout);
+    return json_encode($tree);
+}
 
-            $sql = "ALTER TABLE `{$prefix}$table` ".implode(', ', $changes);
-            $DB->change_database_structure($sql);
-        }
-
-        $pbar->update($i, $tablecount, "Converted unsigned/lob columns in MySQL database - $i/$tablecount.");
+/**
+ * Updates the mime-types for files that exist in the database, based on their
+ * file extension.
+ *
+ * @param array $filetypes Array with file extension as the key, and mimetype as the value
+ */
+function upgrade_mimetypes($filetypes) {
+    global $DB;
+    $select = $DB->sql_like('filename', '?', false);
+    foreach ($filetypes as $extension=>$mimetype) {
+        $DB->set_field_select(
+            'files',
+            'mimetype',
+            $mimetype,
+            $select,
+            array($extension)
+        );
     }
 }
 
 /**
- * Migrate NTEXT to NVARCHAR(MAX).
+ * Marks all courses with changes in extra credit weight calculation
+ *
+ * Used during upgrade and in course restore process
+ *
+ * This upgrade script is needed because we changed the algorithm for calculating the automatic weights of extra
+ * credit items and want to prevent changes in the existing student grades.
+ *
+ * @param int $onlycourseid
  */
-function upgrade_mssql_nvarcharmax() {
+function upgrade_extra_credit_weightoverride($onlycourseid = 0) {
     global $DB;
 
-    if ($DB->get_dbfamily() !== 'mssql') {
-        return;
-    }
-
-    $pbar = new progress_bar('mssqlconvertntext', 500, true);
-
-    $prefix = $DB->get_prefix();
-    $tables = $DB->get_tables(false);
-
-    $tablecount = count($tables);
-    $i = 0;
-    foreach ($tables as $table) {
-        $i++;
-
-        $columns = array();
-
-        $sql = "SELECT column_name
-                  FROM INFORMATION_SCHEMA.COLUMNS
-                 WHERE table_name = '{{$table}}' AND UPPER(data_type) = 'NTEXT'";
-        $rs = $DB->get_recordset_sql($sql);
-        foreach ($rs as $column) {
-            $columns[] = $column->column_name;
+    // Find all courses that have categories in Natural aggregation method where there is at least one extra credit
+    // item and at least one item with overridden weight.
+    $courses = $DB->get_fieldset_sql(
+        "SELECT DISTINCT gc.courseid
+          FROM {grade_categories} gc
+          INNER JOIN {grade_items} gi ON gc.id = gi.categoryid AND gi.weightoverride = :weightoverriden
+          INNER JOIN {grade_items} gie ON gc.id = gie.categoryid AND gie.aggregationcoef = :extracredit
+          WHERE gc.aggregation = :naturalaggmethod" . ($onlycourseid ? " AND gc.courseid = :onlycourseid" : ''),
+        array('naturalaggmethod' => 13,
+            'weightoverriden' => 1,
+            'extracredit' => 1,
+            'onlycourseid' => $onlycourseid,
+        )
+    );
+    foreach ($courses as $courseid) {
+        $gradebookfreeze = get_config('core', 'gradebook_calculations_freeze_' . $courseid);
+        if (!$gradebookfreeze) {
+            set_config('gradebook_calculations_freeze_' . $courseid, 20150619);
         }
-        $rs->close();
-
-        if ($columns) {
-            // Set appropriate timeout - 1 minute per thousand of records should be enough, min 60 minutes just in case.
-            $count = $DB->count_records($table, array());
-            $timeout = ($count/1000)*60;
-            $timeout = ($timeout < 60*60) ? 60*60 : (int)$timeout;
-            upgrade_set_timeout($timeout);
-
-            $updates = array();
-            foreach ($columns as $column) {
-                // Change the definition.
-                $sql = "ALTER TABLE {$prefix}$table ALTER COLUMN $column NVARCHAR(MAX)";
-                $DB->change_database_structure($sql);
-                $updates[] = "$column = $column";
-            }
-
-            // Now force the migration of text data to new optimised storage.
-            $sql = "UPDATE {{$table}} SET ".implode(', ', $updates);
-            $DB->execute($sql);
-        }
-
-        $pbar->update($i, $tablecount, "Converted NTEXT to NVARCHAR(MAX) columns in MS SQL Server database - $i/$tablecount.");
     }
 }
 
 /**
- * Migrate IMAGE to VARBINARY(MAX).
+ * Marks all courses that require calculated grade items be updated.
+ *
+ * Used during upgrade and in course restore process.
+ *
+ * This upgrade script is needed because the calculated grade items were stuck with a maximum of 100 and could be changed.
+ * This flags the courses that are affected and the grade book is frozen to retain grade integrity.
+ *
+ * @param int $courseid Specify a course ID to run this script on just one course.
  */
-function upgrade_mssql_varbinarymax() {
-    global $DB;
+function upgrade_calculated_grade_items($courseid = null) {
+    global $DB, $CFG;
 
-    if ($DB->get_dbfamily() !== 'mssql') {
-        return;
+    $affectedcourses = array();
+    $possiblecourseids = array();
+    $params = array();
+    $singlecoursesql = '';
+    if (isset($courseid)) {
+        $singlecoursesql = "AND ns.id = :courseid";
+        $params['courseid'] = $courseid;
+    }
+    $siteminmaxtouse = 1;
+    if (isset($CFG->grade_minmaxtouse)) {
+        $siteminmaxtouse = $CFG->grade_minmaxtouse;
+    }
+    $courseidsql = "SELECT ns.id
+                      FROM (
+                        SELECT c.id, coalesce(" . $DB->sql_compare_text('gs.value') . ", :siteminmax) AS gradevalue
+                          FROM {course} c
+                          LEFT JOIN {grade_settings} gs
+                            ON c.id = gs.courseid
+                           AND ((gs.name = 'minmaxtouse' AND " . $DB->sql_compare_text('gs.value') . " = '2'))
+                        ) ns
+                    WHERE " . $DB->sql_compare_text('ns.gradevalue') . " = '2' $singlecoursesql";
+    $params['siteminmax'] = $siteminmaxtouse;
+    $courses = $DB->get_records_sql($courseidsql, $params);
+    foreach ($courses as $course) {
+        $possiblecourseids[$course->id] = $course->id;
     }
 
-    $pbar = new progress_bar('mssqlconvertimage', 500, true);
+    if (!empty($possiblecourseids)) {
+        list($sql, $params) = $DB->get_in_or_equal($possiblecourseids);
+        // A calculated grade item grade min != 0 and grade max != 100 and the course setting is set to
+        // "Initial min and max grades".
+        $coursesql = "SELECT DISTINCT courseid
+                        FROM {grade_items}
+                       WHERE calculation IS NOT NULL
+                         AND itemtype = 'manual'
+                         AND (grademax <> 100 OR grademin <> 0)
+                         AND courseid $sql";
+        $affectedcourses = $DB->get_records_sql($coursesql, $params);
+    }
 
-    $prefix = $DB->get_prefix();
-    $tables = $DB->get_tables(false);
-
-    $tablecount = count($tables);
-    $i = 0;
-    foreach ($tables as $table) {
-        $i++;
-
-        $columns = array();
-
-        $sql = "SELECT column_name
-                  FROM INFORMATION_SCHEMA.COLUMNS
-                 WHERE table_name = '{{$table}}' AND UPPER(data_type) = 'IMAGE'";
-        $rs = $DB->get_recordset_sql($sql);
-        foreach ($rs as $column) {
-            $columns[] = $column->column_name;
+    // Check for second type of affected courses.
+    // If we already have the courseid parameter set in the affectedcourses then there is no need to run through this section.
+    if (!isset($courseid) || !in_array($courseid, $affectedcourses)) {
+        $singlecoursesql = '';
+        $params = array();
+        if (isset($courseid)) {
+            $singlecoursesql = "AND courseid = :courseid";
+            $params['courseid'] = $courseid;
         }
-        $rs->close();
+        $nestedsql = "SELECT id
+                        FROM {grade_items}
+                       WHERE itemtype = 'category'
+                         AND calculation IS NOT NULL $singlecoursesql";
+        $calculatedgradecategories = $DB->get_records_sql($nestedsql, $params);
+        $categoryids = array();
+        foreach ($calculatedgradecategories as $key => $gradecategory) {
+            $categoryids[$key] = $gradecategory->id;
+        }
 
-        if ($columns) {
-            // Set appropriate timeout - 1 minute per thousand of records should be enough, min 60 minutes just in case.
-            $count = $DB->count_records($table, array());
-            $timeout = ($count/1000)*60;
-            $timeout = ($timeout < 60*60) ? 60*60 : (int)$timeout;
-            upgrade_set_timeout($timeout);
-
-            foreach ($columns as $column) {
-                // Change the definition.
-                $sql = "ALTER TABLE {$prefix}$table ALTER COLUMN $column VARBINARY(MAX)";
-                $DB->change_database_structure($sql);
+        if (!empty($categoryids)) {
+            list($sql, $params) = $DB->get_in_or_equal($categoryids);
+            // A category with a calculation where the raw grade min and the raw grade max don't match the grade min and grade max
+            // for the category.
+            $coursesql = "SELECT DISTINCT gi.courseid
+                            FROM {grade_grades} gg, {grade_items} gi
+                           WHERE gi.id = gg.itemid
+                             AND (gg.rawgrademax <> gi.grademax OR gg.rawgrademin <> gi.grademin)
+                             AND gi.id $sql";
+            $additionalcourses = $DB->get_records_sql($coursesql, $params);
+            foreach ($additionalcourses as $key => $additionalcourse) {
+                if (!array_key_exists($key, $affectedcourses)) {
+                    $affectedcourses[$key] = $additionalcourse;
+                }
             }
-
-            // Binary columns should not be used, do not waste time optimising the storage.
         }
-
-        $pbar->update($i, $tablecount, "Converted IMAGE to VARBINARY(MAX) columns in MS SQL Server database - $i/$tablecount.");
     }
+
+    foreach ($affectedcourses as $affectedcourseid) {
+        if (isset($CFG->upgrade_calculatedgradeitemsonlyregrade) && !($courseid)) {
+            $DB->set_field('grade_items', 'needsupdate', 1, array('courseid' => $affectedcourseid->courseid));
+        } else {
+            // Check to see if the gradebook freeze is already in affect.
+            $gradebookfreeze = get_config('core', 'gradebook_calculations_freeze_' . $affectedcourseid->courseid);
+            if (!$gradebookfreeze) {
+                set_config('gradebook_calculations_freeze_' . $affectedcourseid->courseid, 20150627);
+            }
+        }
+    }
+}
+
+/**
+ * This upgrade script merges all tag instances pointing to the same course tag
+ *
+ * User id is no longer used for those tag instances
+ */
+function upgrade_course_tags() {
+    global $DB;
+    $sql = "SELECT min(ti.id)
+        FROM {tag_instance} ti
+        LEFT JOIN {tag_instance} tii on tii.itemtype = ? and tii.itemid = ti.itemid and tii.tiuserid = 0 and tii.tagid = ti.tagid
+        where ti.itemtype = ? and ti.tiuserid <> 0 AND tii.id is null
+        group by ti.tagid, ti.itemid";
+    $ids = $DB->get_fieldset_sql($sql, array('course', 'course'));
+    if ($ids) {
+        list($idsql, $idparams) = $DB->get_in_or_equal($ids);
+        $DB->execute('UPDATE {tag_instance} SET tiuserid = 0 WHERE id ' . $idsql, $idparams);
+    }
+    $DB->execute("DELETE FROM {tag_instance} WHERE itemtype = ? AND tiuserid <> 0", array('course'));
 }

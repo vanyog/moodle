@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'Italic';
-$string['italic'] = 'Italic';

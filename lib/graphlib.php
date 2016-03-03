@@ -1173,7 +1173,7 @@ class graph {
       return array('min' => $min, 'max' => $max);
     }
 
-    function graph() {
+    public function __construct() {
       if (func_num_args() == 2) {
         $this->parameter['width']  = func_get_arg(0);
         $this->parameter['height'] = func_get_arg(1);
@@ -1190,10 +1190,36 @@ class graph {
       //ImageColorTransparent($this->image, $this->colour['white']); // colour for transparency
     }
 
+    /**
+     * Old syntax of class constructor. Deprecated in PHP7.
+     *
+     * @deprecated since Moodle 3.1
+     */
+    public function graph() {
+        debugging('Use of class name as constructor is deprecated', DEBUG_DEVELOPER);
+        self::__construct();
+    }
+
+    /**
+     * Prepare label's text for GD output.
+     *
+     * @param string    $label string to be prepared.
+     * @return string   Reversed input string, if we are in RTL mode and has no numbers.
+     *                  Otherwise, returns the string as is.
+     */
+    private function prepare_label_text($label) {
+        if (right_to_left() and !preg_match('/[0-9]/i', $label)) {
+            return core_text::strrev($label);
+        } else {
+            return $label;
+        }
+    }
+
     function print_TTF($message) {
       $points    = $message['points'];
       $angle     = $message['angle'];
-      $text      = $message['text'];
+      // We have to manually reverse the label, since php GD cannot handle RTL characters properly in UTF8 strings.
+      $text      = $this->prepare_label_text($message['text']);
       $colour    = $this->colour[$message['colour']];
       $font      = $this->parameter['path_to_fonts'].$message['font'];
 

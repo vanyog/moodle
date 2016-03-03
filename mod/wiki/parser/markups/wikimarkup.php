@@ -6,7 +6,7 @@
  * @author Josep Arús
  *
  * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
- * @package wiki
+ * @package mod_wiki
  */
 
 abstract class wiki_markup_parser extends generic_parser {
@@ -181,7 +181,9 @@ abstract class wiki_markup_parser extends generic_parser {
         $text = trim($text);
 
         if (!$this->pretty_print && $level == 1) {
-            $text .= parser_utils::h('a', '['.get_string('editsection', 'wiki').']', array('href' => "edit.php?pageid={$this->wiki_page_id}&section=" . urlencode($text), 'class' => 'wiki_edit_section'));
+            $text .= ' ' . parser_utils::h('a', '['.get_string('editsection', 'wiki').']',
+                array('href' => "edit.php?pageid={$this->wiki_page_id}&section=" . urlencode($text),
+                    'class' => 'wiki_edit_section'));
         }
 
         if ($level <= $this->maxheaderdepth) {
@@ -190,7 +192,8 @@ abstract class wiki_markup_parser extends generic_parser {
             $text = parser_utils::h('a', "", array('name' => "toc-$num")) . $text;
         }
 
-        return parser_utils::h('h' . $level, $text) . "\n\n";
+        // Display headers as <h3> and lower for accessibility.
+        return parser_utils::h('h' . min(6, $level + 2), $text) . "\n\n";
     }
 
     /**
@@ -226,7 +229,7 @@ abstract class wiki_markup_parser extends generic_parser {
                 }
                 break;
             default:
-                continue;
+                continue 2;
             }
             $number = "$currentsection[0]";
             if (!empty($currentsection[1])) {
@@ -235,7 +238,9 @@ abstract class wiki_markup_parser extends generic_parser {
                     $number .= ".$currentsection[2]";
                 }
             }
-            $toc .= parser_utils::h('p', $number . ". " . parser_utils::h('a', $header[1], array('href' => "#toc-$i")), array('class' => 'wiki-toc-section-' . $header[0] . " wiki-toc-section"));
+            $toc .= parser_utils::h('p', $number . ". " .
+               parser_utils::h('a', str_replace(array('[[', ']]'), '', $header[1]), array('href' => "#toc-$i")),
+               array('class' => 'wiki-toc-section-' . $header[0] . " wiki-toc-section"));
             $i++;
         }
 
@@ -401,7 +406,8 @@ abstract class wiki_markup_parser extends generic_parser {
             $text .= "\n\n";
         }
 
-        preg_match("/(.*?)(=\ *\Q$header\E\ *=*\n.*?)((?:\n=[^=]+.*)|$)/is", $text, $match);
+        $regex = "/(.*?)(=\ *".preg_quote($header, '/')."\ *=*\n.*?)((?:\n=[^=]+.*)|$)/is";
+        preg_match($regex, $text, $match);
 
         if (!empty($match)) {
             return array($match[1], $match[2], $match[3]);

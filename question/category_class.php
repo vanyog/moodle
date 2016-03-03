@@ -113,7 +113,7 @@ class question_category_list_item extends list_item {
                 array('context' => $this->parentlist->context, 'noclean' => true));
 
         // don't allow delete if this is the last category in this context.
-        if (count($this->parentlist->records) != 1) {
+        if (!question_is_only_toplevel_category_in_context($category->id)) {
             $deleteurl = new moodle_url($this->parentlist->pageurl, array('delete' => $this->id, 'sesskey' => sesskey()));
             $item .= html_writer::link($deleteurl,
                     html_writer::empty_tag('img', array('src' => $OUTPUT->pix_url('t/delete'),
@@ -162,7 +162,7 @@ class question_category_object {
      *
      * Gets necessary strings and sets relevant path information
      */
-    public function question_category_object($page, $pageurl, $contexts, $currentcat, $defaultcategory, $todelete, $addcontexts) {
+    public function __construct($page, $pageurl, $contexts, $currentcat, $defaultcategory, $todelete, $addcontexts) {
         global $CFG, $COURSE, $OUTPUT;
 
         $this->tab = str_repeat('&nbsp;', $this->tabsize);
@@ -192,6 +192,16 @@ class question_category_object {
         $this->pageurl = $pageurl;
 
         $this->initialize($page, $contexts, $currentcat, $defaultcategory, $todelete, $addcontexts);
+    }
+
+    /**
+     * Old syntax of class constructor. Deprecated in PHP7.
+     *
+     * @deprecated since Moodle 3.1
+     */
+    public function question_category_object($page, $pageurl, $contexts, $currentcat, $defaultcategory, $todelete, $addcontexts) {
+        debugging('Use of class name as constructor is deprecated', DEBUG_DEVELOPER);
+        self::__construct($page, $pageurl, $contexts, $currentcat, $defaultcategory, $todelete, $addcontexts);
     }
 
     /**
@@ -290,7 +300,7 @@ class question_category_object {
         /// Interface for editing existing categories
         if ($category = $DB->get_record("question_categories", array("id" => $categoryid))) {
 
-            $category->parent = "$category->parent,$category->contextid";
+            $category->parent = "{$category->parent},{$category->contextid}";
             $category->submitbutton = get_string('savechanges');
             $category->categoryheader = $this->str->edit;
             $this->catform->set_data($category);
@@ -404,6 +414,15 @@ class question_category_object {
         $cat->sortorder = 999;
         $cat->stamp = make_unique_id_code();
         $categoryid = $DB->insert_record("question_categories", $cat);
+
+        // Log the creation of this category.
+        $params = array(
+            'objectid' => $categoryid,
+            'contextid' => $contextid
+        );
+        $event = \core\event\question_category_created::create($params);
+        $event->trigger();
+
         if ($return) {
             return $categoryid;
         } else {

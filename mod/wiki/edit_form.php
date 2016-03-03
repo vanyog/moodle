@@ -18,9 +18,9 @@
 /**
  * This file contains all necessary code to define and process an edit form
  *
- * @package mod-wiki-2.0
- * @copyrigth 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
- * @copyrigth 2009 Universitat Politecnica de Catalunya http://www.upc.edu
+ * @package mod_wiki
+ * @copyright 2009 Marc Alier, Jordi Piguillem marc.alier@upc.edu
+ * @copyright 2009 Universitat Politecnica de Catalunya http://www.upc.edu
  *
  * @author Josep Arus
  *
@@ -100,13 +100,11 @@ class mod_wiki_edit_form extends moodleform {
         $mform->addElement('hidden', 'contentformat', $format);
         $mform->setType('contentformat', PARAM_ALPHANUMEXT);
 
-        if (!empty($CFG->usetags)) {
-            $tags = !isset($this->_customdata['tags'])?"":$this->_customdata['tags'];
+        if (core_tag_tag::is_enabled('mod_wiki', 'wiki_pages')) {
             $mform->addElement('header', 'tagshdr', get_string('tags', 'tag'));
-            $mform->addElement('tags', 'tags', get_string('tags'));
-            $mform->setDefault('tags', $tags);
-            $mform->setType('tags', PARAM_TEXT);
         }
+        $mform->addElement('tags', 'tags', get_string('tags'),
+                array('itemtype' => 'wiki_pages', 'component' => 'mod_wiki'));
 
         $buttongroup = array();
         $buttongroup[] = $mform->createElement('submit', 'editoption', get_string('save', 'wiki'), array('id' => 'save'));

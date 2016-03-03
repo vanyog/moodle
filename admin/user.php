@@ -46,6 +46,8 @@
 
     $returnurl = new moodle_url('/admin/user.php', array('sort' => $sort, 'dir' => $dir, 'perpage' => $perpage, 'page'=>$page));
 
+    // The $user variable is also used outside of these if statements.
+    $user = null;
     if ($confirmuser and confirm_sesskey()) {
         require_capability('moodle/user:update', $sitecontext);
         if (!$user = $DB->get_record('user', array('id'=>$confirmuser, 'mnethostid'=>$CFG->mnet_localhost_id))) {
@@ -76,16 +78,20 @@
             echo $OUTPUT->header();
             $fullname = fullname($user, true);
             echo $OUTPUT->heading(get_string('deleteuser', 'admin'));
+
             $optionsyes = array('delete'=>$delete, 'confirm'=>md5($delete), 'sesskey'=>sesskey());
-            echo $OUTPUT->confirm(get_string('deletecheckfull', '', "'$fullname'"), new moodle_url($returnurl, $optionsyes), $returnurl);
+            $deleteurl = new moodle_url($returnurl, $optionsyes);
+            $deletebutton = new single_button($deleteurl, get_string('delete'), 'post');
+
+            echo $OUTPUT->confirm(get_string('deletecheckfull', '', "'$fullname'"), $deletebutton, $returnurl);
             echo $OUTPUT->footer();
             die;
         } else if (data_submitted() and !$user->deleted) {
             if (delete_user($user)) {
-                session_gc(); // remove stale sessions
+                \core\session\manager::gc(); // Remove stale sessions.
                 redirect($returnurl);
             } else {
-                session_gc(); // remove stale sessions
+                \core\session\manager::gc(); // Remove stale sessions.
                 echo $OUTPUT->header();
                 echo $OUTPUT->notification($returnurl, get_string('deletednot', '', fullname($user, true)));
             }
@@ -125,7 +131,7 @@
             if (!is_siteadmin($user) and $USER->id != $user->id and $user->suspended != 1) {
                 $user->suspended = 1;
                 // Force logout.
-                session_kill_user($user->id);
+                \core\session\manager::kill_user_sessions($user->id);
                 user_update_user($user, false);
             }
         }
@@ -158,8 +164,9 @@
     // Carry on with the user listing
     $context = context_system::instance();
     $extracolumns = get_extra_user_fields($context);
-    $columns = array_merge(array('firstname', 'lastname'), $extracolumns,
-            array('city', 'country', 'lastaccess'));
+    // Get all user name fields as an array.
+    $allusernamefields = get_all_user_name_fields(false, null, null, null, true);
+    $columns = array_merge($allusernamefields, $extracolumns, array('city', 'country', 'lastaccess'));
 
     foreach ($columns as $column) {
         $string[$column] = get_user_field_name($column);
@@ -183,22 +190,33 @@
         $$column = "<a href=\"user.php?sort=$column&amp;dir=$columndir\">".$string[$column]."</a>$columnicon";
     }
 
-    $override = new stdClass();
-    $override->firstname = 'firstname';
-    $override->lastname = 'lastname';
-    $fullnamelanguage = get_string('fullnamedisplay', '', $override);
-    if (($CFG->fullnamedisplay == 'firstname lastname') or
-        ($CFG->fullnamedisplay == 'firstname') or
-        ($CFG->fullnamedisplay == 'language' and $fullnamelanguage == 'firstname lastname' )) {
-        $fullnamedisplay = "$firstname / $lastname";
-        if ($sort == "name") { // If sort has already been set to something else then ignore.
-            $sort = "firstname";
-        }
-    } else { // ($CFG->fullnamedisplay == 'language' and $fullnamelanguage == 'lastname firstname').
-        $fullnamedisplay = "$lastname / $firstname";
-        if ($sort == "name") { // This should give the desired sorting based on fullnamedisplay.
-            $sort = "lastname";
-        }
+    // We need to check that alternativefullnameformat is not set to '' or language.
+    // We don't need to check the fullnamedisplay setting here as the fullname function call further down has
+    // the override parameter set to true.
+    $fullnamesetting = $CFG->alternativefullnameformat;
+    // If we are using language or it is empty, then retrieve the default user names of just 'firstname' and 'lastname'.
+    if ($fullnamesetting == 'language' || empty($fullnamesetting)) {
+        // Set $a variables to return 'firstname' and 'lastname'.
+        $a = new stdClass();
+        $a->firstname = 'firstname';
+        $a->lastname = 'lastname';
+        // Getting the fullname display will ensure that the order in the language file is maintained.
+        $fullnamesetting = get_string('fullnamedisplay', null, $a);
+    }
+
+    // Order in string will ensure that the name columns are in the correct order.
+    $usernames = order_in_string($allusernamefields, $fullnamesetting);
+    $fullnamedisplay = array();
+    foreach ($usernames as $name) {
+        // Use the link from $$column for sorting on the user's name.
+        $fullnamedisplay[] = ${$name};
+    }
+    // All of the names are in one column. Put them into a string and separate them with a /.
+    $fullnamedisplay = implode(' / ', $fullnamedisplay);
+    // If $sort = name then it is the default for the setting and we should use the first name to sort by.
+    if ($sort == "name") {
+        // Use the first item in the array.
+        $sort = reset($usernames);
     }
 
     list($extrasql, $params) = $ufiltering->get_sql_filter();
@@ -256,17 +274,12 @@
         $table->colclasses = array();
         $table->head[] = $fullnamedisplay;
         $table->attributes['class'] = 'admintable generaltable';
-        $table->colclasses[] = 'leftalign';
         foreach ($extracolumns as $field) {
             $table->head[] = ${$field};
-            $table->colclasses[] = 'leftalign';
         }
         $table->head[] = $city;
-        $table->colclasses[] = 'leftalign';
         $table->head[] = $country;
-        $table->colclasses[] = 'leftalign';
         $table->head[] = $lastaccess;
-        $table->colclasses[] = 'leftalign';
         $table->head[] = get_string('edit');
         $table->colclasses[] = 'centeralign';
         $table->head[] = "";
@@ -369,18 +382,15 @@
     $ufiltering->display_add();
     $ufiltering->display_active();
 
-    if (has_capability('moodle/user:create', $sitecontext)) {
-        echo $OUTPUT->heading('<a href="'.$securewwwroot.'/user/editadvanced.php?id=-1">'.get_string('addnewuser').'</a>');
-    }
     if (!empty($table)) {
+        echo html_writer::start_tag('div', array('class'=>'no-overflow'));
         echo html_writer::table($table);
+        echo html_writer::end_tag('div');
         echo $OUTPUT->paging_bar($usercount, $page, $perpage, $baseurl);
-        if (has_capability('moodle/user:create', $sitecontext)) {
-            echo $OUTPUT->heading('<a href="'.$securewwwroot.'/user/editadvanced.php?id=-1">'.get_string('addnewuser').'</a>');
-        }
+    }
+    if (has_capability('moodle/user:create', $sitecontext)) {
+        $url = new moodle_url($securewwwroot . '/user/editadvanced.php', array('id' => -1));
+        echo $OUTPUT->single_button($url, get_string('addnewuser'), 'get');
     }
 
     echo $OUTPUT->footer();
-
-
-

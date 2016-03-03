@@ -41,6 +41,7 @@ class core_grade_category_testcase extends grade_base_testcase {
         $this->sub_test_grade_category_aggregate_grades();
         $this->sub_test_grade_category_apply_limit_rules();
         $this->sub_test_grade_category_is_aggregationcoef_used();
+        $this->sub_test_grade_category_aggregation_uses_aggregationcoef();
         $this->sub_test_grade_category_fetch_course_tree();
         $this->sub_test_grade_category_get_children();
         $this->sub_test_grade_category_load_grade_item();
@@ -48,6 +49,7 @@ class core_grade_category_testcase extends grade_base_testcase {
         $this->sub_test_grade_category_load_parent_category();
         $this->sub_test_grade_category_get_parent_category();
         $this->sub_test_grade_category_get_name();
+        $this->sub_test_grade_category_generate_grades_aggregationweight();
         $this->sub_test_grade_category_set_parent();
         $this->sub_test_grade_category_get_final();
         $this->sub_test_grade_category_get_sortorder();
@@ -67,6 +69,8 @@ class core_grade_category_testcase extends grade_base_testcase {
 
         // Do this last as adding a second course category messes up the data.
         $this->sub_test_grade_category_insert_course_category();
+        $this->sub_test_grade_category_is_extracredit_used();
+        $this->sub_test_grade_category_aggregation_uses_extracredit();
     }
 
     // Adds 3 new grade categories at various depths.
@@ -233,6 +237,64 @@ class core_grade_category_testcase extends grade_base_testcase {
         $grade_category->load_grade_item();
 
         $this->assertEquals(1, $grade_category->grade_item->needsupdate);
+    }
+
+    /**
+     * Tests the setting of the grade_grades aggregationweight column.
+     * Currently, this is only a regression test for MDL-51715.
+     * This must be run before sub_test_grade_category_set_parent(), which alters
+     * the fixture.
+     */
+    protected function sub_test_grade_category_generate_grades_aggregationweight() {
+        global $DB;
+
+        // Start of regression test for MDL-51715.
+        // grade_categories [1] and [2] are child categories of [0]
+        // Ensure that grades have been generated with fixture data.
+        $childcat1 = new grade_category($this->grade_categories[1]);
+        $childcat1itemid = $childcat1->load_grade_item()->id;
+        $childcat1->generate_grades();
+        $childcat2 = new grade_category($this->grade_categories[2]);
+        $childcat2itemid = $childcat2->load_grade_item()->id;
+        $childcat2->generate_grades();
+        $parentcat = new grade_category($this->grade_categories[0]);
+        $parentcat->generate_grades();
+
+        // Drop low and and re-generate to produce 'dropped' aggregation status.
+        $parentcat->droplow = 1;
+        $parentcat->generate_grades();
+
+        $this->assertTrue($DB->record_exists_select(
+                                     'grade_grades',
+                                     "aggregationstatus='dropped' and itemid in (?,?)",
+                                     array($childcat1itemid, $childcat2itemid)));
+        $this->assertFalse($DB->record_exists_select(
+                                     'grade_grades',
+                                     "aggregationstatus='dropped' and aggregationweight > 0.00"),
+                           "aggregationweight should be 0.00 if aggregationstatus=='dropped'");
+
+        // Reset grade data to be consistent with fixture data.
+        $parentcat->droplow = 0;
+        $parentcat->generate_grades();
+
+        // Blank out the final grade for one of the child categories and re-generate
+        // to produce 'novalue' aggregationstatus.  Direct DB update is testing shortcut.
+        $DB->set_field('grade_grades', 'finalgrade', null, array('itemid'=>$childcat1itemid));
+        $parentcat->generate_grades();
+
+        $this->assertTrue($DB->record_exists_select(
+                                     'grade_grades',
+                                     "aggregationstatus='novalue' and itemid = ?",
+                                     array($childcat1itemid)));
+        $this->assertFalse($DB->record_exists_select(
+                                     'grade_grades',
+                                     "aggregationstatus='novalue' and aggregationweight > 0.00"),
+                           "aggregationweight should be 0.00 if aggregationstatus=='novalue'");
+
+        // Re-generate to be consistent with fixture data.
+        $childcat1->generate_grades();
+        $parentcat->generate_grades();
+        // End of regression test for MDL-51715.
     }
 
     /**
@@ -531,11 +593,43 @@ class core_grade_category_testcase extends grade_base_testcase {
 
     }
 
-    /**
-     * TODO implement
-     */
     protected function sub_test_grade_category_is_aggregationcoef_used() {
+        $category = new grade_category();
+        // Following use aggregationcoef.
+        $category->aggregation = GRADE_AGGREGATE_WEIGHTED_MEAN;
+        $this->assertTrue($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_WEIGHTED_MEAN2;
+        $this->assertTrue($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_EXTRACREDIT_MEAN;
+        $this->assertTrue($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_SUM;
+        $this->assertTrue($category->is_aggregationcoef_used());
 
+        // Following don't use aggregationcoef.
+        $category->aggregation = GRADE_AGGREGATE_MAX;
+        $this->assertFalse($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_MEAN;
+        $this->assertFalse($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_MEDIAN;
+        $this->assertFalse($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_MIN;
+        $this->assertFalse($category->is_aggregationcoef_used());
+        $category->aggregation = GRADE_AGGREGATE_MODE;
+        $this->assertFalse($category->is_aggregationcoef_used());
+    }
+
+    protected function sub_test_grade_category_aggregation_uses_aggregationcoef() {
+
+        $this->assertTrue(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_WEIGHTED_MEAN));
+        $this->assertTrue(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_WEIGHTED_MEAN2));
+        $this->assertTrue(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_EXTRACREDIT_MEAN));
+        $this->assertTrue(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_SUM));
+
+        $this->assertFalse(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_MAX));
+        $this->assertFalse(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_MEAN));
+        $this->assertFalse(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_MEDIAN));
+        $this->assertFalse(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_MIN));
+        $this->assertFalse(grade_category::aggregation_uses_aggregationcoef(GRADE_AGGREGATE_MODE));
     }
 
     protected function sub_test_grade_category_fetch_course_tree() {
@@ -720,5 +814,44 @@ class core_grade_category_testcase extends grade_base_testcase {
         $grade->rawgrade = rand(0, 1000) / 1000;
         $grade->insert();
         return $grade->rawgrade;
+    }
+
+    protected function sub_test_grade_category_is_extracredit_used() {
+        $category = new grade_category();
+        // Following use aggregationcoef.
+        $category->aggregation = GRADE_AGGREGATE_WEIGHTED_MEAN2;
+        $this->assertTrue($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_EXTRACREDIT_MEAN;
+        $this->assertTrue($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_SUM;
+        $this->assertTrue($category->is_extracredit_used());
+
+        // Following don't use aggregationcoef.
+        $category->aggregation = GRADE_AGGREGATE_WEIGHTED_MEAN;
+        $this->assertFalse($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_MAX;
+        $this->assertFalse($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_MEAN;
+        $this->assertFalse($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_MEDIAN;
+        $this->assertFalse($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_MIN;
+        $this->assertFalse($category->is_extracredit_used());
+        $category->aggregation = GRADE_AGGREGATE_MODE;
+        $this->assertFalse($category->is_extracredit_used());
+    }
+
+    protected function sub_test_grade_category_aggregation_uses_extracredit() {
+
+        $this->assertTrue(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_WEIGHTED_MEAN2));
+        $this->assertTrue(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_EXTRACREDIT_MEAN));
+        $this->assertTrue(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_SUM));
+
+        $this->assertFalse(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_WEIGHTED_MEAN));
+        $this->assertFalse(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_MAX));
+        $this->assertFalse(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_MEAN));
+        $this->assertFalse(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_MEDIAN));
+        $this->assertFalse(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_MIN));
+        $this->assertFalse(grade_category::aggregation_uses_extracredit(GRADE_AGGREGATE_MODE));
     }
 }

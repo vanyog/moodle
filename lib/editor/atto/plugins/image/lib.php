@@ -25,36 +25,33 @@
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Initialise this plugin
- * @param string $elementid
+ * Initialise the strings required for js
  */
-function atto_image_init_editor($elementid) {
-    global $PAGE, $OUTPUT;
+function atto_image_strings_for_js() {
+    global $PAGE;
 
-    $icon = $OUTPUT->pix_icon('image',
-                              get_string('image', 'atto_image'),
-                              'atto_image',
-                              array('class'=>'icon'));
+    $strings = array(
+        'alignment',
+        'alignment_bottom',
+        'alignment_left',
+        'alignment_middle',
+        'alignment_right',
+        'alignment_top',
+        'browserepositories',
+        'constrain',
+        'saveimage',
+        'imageproperties',
+        'customstyle',
+        'enterurl',
+        'enteralt',
+        'height',
+        'presentation',
+        'presentationoraltrequired',
+        'size',
+        'width',
+        'uploading',
+    );
 
-    $PAGE->requires->strings_for_js(array('createimage',
-                                          'enterurl',
-                                          'enteralt',
-                                          'preview',
-                                          'browserepositories',
-                                          'accessibilityhint',
-                                          'width',
-                                          'height'), 'atto_image');
-    $PAGE->requires->yui_module('moodle-atto_image-button',
-                                'M.atto_image.init',
-                                array(array('elementid'=>$elementid, 'icon'=>$icon)),
-                                true);
-
+    $PAGE->requires->strings_for_js($strings, 'atto_image');
 }
 
-/**
- * Return the order this plugin should be displayed in the toolbar
- * @return int
- */
-function atto_image_sort_order() {
-    return 13;
-}

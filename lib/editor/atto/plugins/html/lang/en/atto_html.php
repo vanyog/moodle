@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'HTML';
-$string['html'] = 'HTML';

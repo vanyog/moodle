@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'Underline';
-$string['underline'] = 'Underline';

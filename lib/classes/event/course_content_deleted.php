@@ -14,12 +14,29 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace core\event;
-
 /**
- * Course content_deleted event.
+ * Course content deleted event.
  *
  * @package    core
+ * @copyright  2013 Mark Nelson <markn@moodle.com>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+namespace core\event;
+
+defined('MOODLE_INTERNAL') || die();
+
+/**
+ * Course content deleted event class.
+ *
+ * @property-read array $other {
+ *      Extra information about event.
+ *
+ *      - array options: list of options which were skipped while deleting course content.
+ * }
+ *
+ * @package    core
+ * @since      Moodle 2.6
  * @copyright  2013 Mark Nelson <markn@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -31,7 +48,7 @@ class course_content_deleted extends base {
     protected function init() {
         $this->data['objecttable'] = 'course';
         $this->data['crud'] = 'd';
-        $this->data['level'] = self::LEVEL_TEACHING;
+        $this->data['edulevel'] = self::LEVEL_TEACHING;
     }
 
     /**
@@ -49,7 +66,7 @@ class course_content_deleted extends base {
      * @return string
      */
     public function get_description() {
-        return "Course content was deleted by user {$this->userid}";
+        return "The user with id '$this->userid' deleted content from course with id '$this->courseid'.";
     }
 
     /**
@@ -72,5 +89,27 @@ class course_content_deleted extends base {
         $course->options = $this->other['options'];
 
         return $course;
+    }
+
+    /**
+     * Custom validation.
+     *
+     * @throws \coding_exception
+     * @return void
+     */
+    protected function validate_data() {
+        parent::validate_data();
+
+        if (!isset($this->other['options'])) {
+            throw new \coding_exception('The \'options\' value must be set in other.');
+        }
+    }
+
+    public static function get_objectid_mapping() {
+        return array('db' => 'course', 'restore' => 'course');
+    }
+
+    public static function get_other_mapping() {
+        return false;
     }
 }

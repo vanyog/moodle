@@ -146,12 +146,39 @@ class question_attempt_with_steps_test extends advanced_testcase {
 
     public function test_get_min_fraction() {
         $this->qa->set_min_fraction(-1);
-        $this->assertEquals(-1, $this->qa->get_min_fraction(0));
+        $this->assertEquals(-1, $this->qa->get_min_fraction());
     }
 
     public function test_cannot_get_min_fraction_before_start() {
         $qa = new question_attempt($this->question, 0);
         $this->setExpectedException('moodle_exception');
         $qa->get_min_fraction();
+    }
+
+    public function test_get_max_fraction() {
+        $this->qa->set_max_fraction(2);
+        $this->assertEquals(2, $this->qa->get_max_fraction());
+    }
+
+    public function test_cannot_get_max_fraction_before_start() {
+        $qa = new question_attempt($this->question, 0);
+        $this->setExpectedException('moodle_exception');
+        $qa->get_max_fraction();
+    }
+
+    public function test_validate_manual_mark() {
+        $this->qa->set_min_fraction(0);
+        $this->qa->set_max_fraction(1);
+        $this->assertSame('', $this->qa->validate_manual_mark(null));
+        $this->assertSame('', $this->qa->validate_manual_mark(''));
+        $this->assertSame('', $this->qa->validate_manual_mark('0'));
+        $this->assertSame('', $this->qa->validate_manual_mark('0.0'));
+        $this->assertSame('', $this->qa->validate_manual_mark('2,0'));
+        $this->assertSame(get_string('manualgradeinvalidformat', 'question'),
+                $this->qa->validate_manual_mark('frog'));
+        $this->assertSame(get_string('manualgradeoutofrange', 'question'),
+                $this->qa->validate_manual_mark('2.1'));
+        $this->assertSame(get_string('manualgradeoutofrange', 'question'),
+                $this->qa->validate_manual_mark('-0,01'));
     }
 }

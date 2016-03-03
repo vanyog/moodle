@@ -15,13 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * These tests rely on the rsstest.xml file on download.moodle.org,
- * from eloys listing:
- *   rsstest.xml: One valid rss feed.
- *   md5:  8fd047914863bf9b3a4b1514ec51c32c
- *   size: 32188
- *
- * If networking/proxy configuration is wrong these tests will fail..
+ * Weblib tests.
  *
  * @package    core
  * @category   phpunit
@@ -100,7 +94,7 @@ class core_weblib_testcase extends advanced_testcase {
             format_text_email('<p class="frogs">This is a <strong class=\'fishes\'>test</strong></p>', FORMAT_HTML));
         $this->assertSame('& so is this',
             format_text_email('&amp; so is this', FORMAT_HTML));
-        $this->assertSame('Two bullets: '.core_text::code2utf8(8226).' *',
+        $this->assertSame('Two bullets: ' . core_text::code2utf8(8226) . ' ' . core_text::code2utf8(8226),
             format_text_email('Two bullets: &#x2022; &#8226;', FORMAT_HTML));
         $this->assertSame(core_text::code2utf8(0x7fd2).core_text::code2utf8(0x7fd2),
             format_text_email('&#x7fd2;&#x7FD2;', FORMAT_HTML));
@@ -123,15 +117,41 @@ class core_weblib_testcase extends advanced_testcase {
     }
 
     public function test_highlight() {
-        $this->assertSame('This is <span class="highlight">good</span>', highlight('good', 'This is good'));
-        $this->assertSame('<span class="highlight">span</span>', highlight('SpaN', 'span'));
-        $this->assertSame('<span class="highlight">SpaN</span>', highlight('span', 'SpaN'));
-        $this->assertSame('<span><span class="highlight">span</span></span>', highlight('span', '<span>span</span>'));
-        $this->assertSame('He <span class="highlight">is</span> <span class="highlight">good</span>', highlight('good is', 'He is good'));
-        $this->assertSame('This is <span class="highlight">good</span>', highlight('+good', 'This is good'));
-        $this->assertSame('This is good', highlight('-good', 'This is good'));
-        $this->assertSame('This is goodness', highlight('+good', 'This is goodness'));
-        $this->assertSame('This is <span class="highlight">good</span>ness', highlight('good', 'This is goodness'));
+        $this->assertSame('This is <span class="highlight">good</span>',
+                highlight('good', 'This is good'));
+
+        $this->assertSame('<span class="highlight">span</span>',
+                highlight('SpaN', 'span'));
+
+        $this->assertSame('<span class="highlight">SpaN</span>',
+                highlight('span', 'SpaN'));
+
+        $this->assertSame('<span><span class="highlight">span</span></span>',
+                highlight('span', '<span>span</span>'));
+
+        $this->assertSame('He <span class="highlight">is</span> <span class="highlight">good</span>',
+                highlight('good is', 'He is good'));
+
+        $this->assertSame('This is <span class="highlight">good</span>',
+                highlight('+good', 'This is good'));
+
+        $this->assertSame('This is good',
+                highlight('-good', 'This is good'));
+
+        $this->assertSame('This is goodness',
+                highlight('+good', 'This is goodness'));
+
+        $this->assertSame('This is <span class="highlight">good</span>ness',
+                highlight('good', 'This is goodness'));
+
+        $this->assertSame('<p><b>test</b> <b>1</b></p><p><b>1</b></p>',
+                highlight('test 1', '<p>test 1</p><p>1</p>', false, '<b>', '</b>'));
+
+        $this->assertSame('<p><b>test</b> <b>1</b></p><p><b>1</b></p>',
+                    highlight('test +1', '<p>test 1</p><p>1</p>', false, '<b>', '</b>'));
+
+        $this->assertSame('<p><b>test</b> 1</p><p>1</p>',
+                    highlight('test -1', '<p>test 1</p><p>1</p>', false, '<b>', '</b>'));
     }
 
     public function test_replace_ampersands() {
@@ -226,6 +246,24 @@ class core_weblib_testcase extends advanced_testcase {
         $this->assertSame($strurl, $url->out(false));
     }
 
+    /**
+     * Test set good scheme on Moodle URL objects.
+     */
+    public function test_moodle_url_set_good_scheme() {
+        $url = new moodle_url('http://moodle.org/foo/bar');
+        $url->set_scheme('myscheme');
+        $this->assertSame('myscheme://moodle.org/foo/bar', $url->out());
+    }
+
+    /**
+     * Test set bad scheme on Moodle URL objects.
+     */
+    public function test_moodle_url_set_bad_scheme() {
+        $url = new moodle_url('http://moodle.org/foo/bar');
+        $this->setExpectedException('coding_exception');
+        $url->set_scheme('not a valid $ scheme');
+    }
+
     public function test_moodle_url_round_trip_array_params() {
         $strurl = 'http://example.com/?a%5B1%5D=1&a%5B2%5D=2';
         $url = new moodle_url($strurl);
@@ -262,6 +300,16 @@ class core_weblib_testcase extends advanced_testcase {
 
         $url2 = new moodle_url('index.php', array('var2' => 2, 'var1' => 1));
 
+        $this->assertTrue($url1->compare($url2, URL_MATCH_BASE));
+        $this->assertTrue($url1->compare($url2, URL_MATCH_PARAMS));
+        $this->assertTrue($url1->compare($url2, URL_MATCH_EXACT));
+
+        $url1->set_anchor('test');
+        $this->assertTrue($url1->compare($url2, URL_MATCH_BASE));
+        $this->assertTrue($url1->compare($url2, URL_MATCH_PARAMS));
+        $this->assertFalse($url1->compare($url2, URL_MATCH_EXACT));
+
+        $url2->set_anchor('test');
         $this->assertTrue($url1->compare($url2, URL_MATCH_BASE));
         $this->assertTrue($url1->compare($url2, URL_MATCH_PARAMS));
         $this->assertTrue($url1->compare($url2, URL_MATCH_EXACT));
@@ -318,6 +366,36 @@ class core_weblib_testcase extends advanced_testcase {
     public function test_https_out_as_local_url_error() {
         $url4 = new moodle_url('https://www.google.com/lib/tests/weblib_test.php');
         $url4->out_as_local_url();
+    }
+
+    public function test_moodle_url_get_scheme() {
+        // Should return the scheme only.
+        $url = new moodle_url('http://www.example.org:447/my/file/is/here.txt?really=1');
+        $this->assertSame('http', $url->get_scheme());
+
+        // Should work for secure URLs.
+        $url = new moodle_url('https://www.example.org:447/my/file/is/here.txt?really=1');
+        $this->assertSame('https', $url->get_scheme());
+
+        // Should return an empty string if no scheme is specified.
+        $url = new moodle_url('www.example.org:447/my/file/is/here.txt?really=1');
+        $this->assertSame('', $url->get_scheme());
+    }
+
+    public function test_moodle_url_get_host() {
+        // Should return the host part only.
+        $url = new moodle_url('http://www.example.org:447/my/file/is/here.txt?really=1');
+        $this->assertSame('www.example.org', $url->get_host());
+    }
+
+    public function test_moodle_url_get_port() {
+        // Should return the port if one provided.
+        $url = new moodle_url('http://www.example.org:447/my/file/is/here.txt?really=1');
+        $this->assertSame(447, $url->get_port());
+
+        // Should return an empty string if port not specified.
+        $url = new moodle_url('http://www.example.org/some/path/here.php');
+        $this->assertSame('', $url->get_port());
     }
 
     public function test_clean_text() {
@@ -468,4 +546,58 @@ class core_weblib_testcase extends advanced_testcase {
         $this->assertEquals(DEBUG_NONE, $CFG->debug);
         $this->assertFalse($CFG->debugdeveloper);
     }
+
+    public function test_strip_pluginfile_content() {
+        $source = <<<SOURCE
+Hello!
+
+I'm writing to you from the Moodle Majlis in Muscat, Oman, where we just had several days of Moodle community goodness.
+
+URL outside a tag: https://moodle.org/logo/logo-240x60.gif
+Plugin url outside a tag: @@PLUGINFILE@@/logo-240x60.gif
+
+External link 1:<img src='https://moodle.org/logo/logo-240x60.gif' alt='Moodle'/>
+External link 2:<img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif"/>
+Internal link 1:<img src='@@PLUGINFILE@@/logo-240x60.gif' alt='Moodle'/>
+Internal link 2:<img alt="Moodle" src="@@PLUGINFILE@@logo-240x60.gif"/>
+Anchor link 1:<a href="@@PLUGINFILE@@logo-240x60.gif" alt="bananas">Link text</a>
+Anchor link 2:<a title="bananas" href="../logo-240x60.gif">Link text</a>
+Anchor + ext. img:<a title="bananas" href="../logo-240x60.gif"><img alt="Moodle" src="@@PLUGINFILE@@logo-240x60.gif"/></a>
+Ext. anchor + img:<a href="@@PLUGINFILE@@logo-240x60.gif"><img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif"/></a>
+SOURCE;
+        $expected = <<<EXPECTED
+Hello!
+
+I'm writing to you from the Moodle Majlis in Muscat, Oman, where we just had several days of Moodle community goodness.
+
+URL outside a tag: https://moodle.org/logo/logo-240x60.gif
+Plugin url outside a tag: @@PLUGINFILE@@/logo-240x60.gif
+
+External link 1:<img src="https://moodle.org/logo/logo-240x60.gif" alt="Moodle" />
+External link 2:<img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif" />
+Internal link 1:
+Internal link 2:
+Anchor link 1:Link text
+Anchor link 2:<a title="bananas" href="../logo-240x60.gif">Link text</a>
+Anchor + ext. img:<a title="bananas" href="../logo-240x60.gif"></a>
+Ext. anchor + img:<img alt="Moodle" src="https://moodle.org/logo/logo-240x60.gif" />
+EXPECTED;
+        $this->assertSame($expected, strip_pluginfile_content($source));
+    }
+
+    public function test_purify_html_ruby() {
+
+        $this->resetAfterTest();
+
+        $ruby =
+            "<p><ruby><rb>京都</rb><rp>(</rp><rt>きょうと</rt><rp>)</rp></ruby>は" .
+            "<ruby><rb>日本</rb><rp>(</rp><rt>にほん</rt><rp>)</rp></ruby>の" .
+            "<ruby><rb>都</rb><rp>(</rp><rt>みやこ</rt><rp>)</rp></ruby>です。</p>";
+        $illegal = '<script src="//code.jquery.com/jquery-1.11.3.min.js"></script>';
+
+        $cleaned = purify_html($ruby . $illegal);
+        $this->assertEquals($ruby, $cleaned);
+
+    }
+
 }

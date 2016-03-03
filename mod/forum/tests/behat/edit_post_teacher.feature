@@ -5,14 +5,14 @@ Feature: Teachers can edit or delete any forum post
   I need to edit or delete any user's forum posts
 
   Background:
-    Given the following "users" exists:
+    Given the following "users" exist:
       | username | firstname | lastname | email |
-      | teacher1 | Teacher | 1 | teacher1@asd.com |
-      | student1 | Student | 1 | student1@asd.com |
-    And the following "courses" exists:
+      | teacher1 | Teacher | 1 | teacher1@example.com |
+      | student1 | Student | 1 | student1@example.com |
+    And the following "courses" exist:
       | fullname | shortname | category |
       | Course 1 | C1 | 0 |
-    And the following "course enrolments" exists:
+    And the following "course enrolments" exist:
       | user | course | role |
       | teacher1 | C1 | editingteacher |
       | student1 | C1 | student |
@@ -32,7 +32,6 @@ Feature: Teachers can edit or delete any forum post
       | Subject | Student post subject |
       | Message | Student post message |
 
-  @javascript
   Scenario: A teacher can delete another user's posts
     Given I log out
     And I log in as "teacher1"
@@ -41,11 +40,9 @@ Feature: Teachers can edit or delete any forum post
     And I follow "Teacher post subject"
     And I click on "Delete" "link" in the "//div[contains(concat(' ', normalize-space(@class), ' '), ' forumpost ')][contains(., 'Student post subject')]" "xpath_element"
     And I press "Continue"
-    And I wait "4" seconds
     Then I should not see "Student post subject"
     And I should not see "Student post message"
 
-  @javascript
   Scenario: A teacher can edit another user's posts
     Given I log out
     And I log in as "teacher1"
@@ -53,14 +50,13 @@ Feature: Teachers can edit or delete any forum post
     And I follow "Test forum name"
     And I follow "Teacher post subject"
     And I click on "Edit" "link" in the "//div[contains(concat(' ', normalize-space(@class), ' '), ' forumpost ')][contains(., 'Student post subject')]" "xpath_element"
-    And I fill the moodle form with:
+    And I set the following fields to these values:
       | Subject | Edited student subject |
     And I press "Save changes"
-    And I wait "4" seconds
+    And I wait to be redirected
     Then I should see "Edited student subject"
     And I should see "Edited by Teacher 1 - original submission"
 
-  @javascript
   Scenario: A student can't edit or delete another user's posts
     When I follow "Teacher post subject"
     Then I should not see "Edit" in the "//div[contains(concat(' ', normalize-space(@class), ' '), ' forumpost ')][contains(., 'Teacher post subject')]" "xpath_element"

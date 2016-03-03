@@ -14,16 +14,27 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace core\event;
-
 /**
  * Role updated event.
  *
- * @package    core_event
+ * @package    core
+ * @since      Moodle 2.6
  * @copyright  2013 Rajesh Taneja <rajesh@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace core\event;
+
+defined('MOODLE_INTERNAL') || die();
+
+/**
+ * Role updated event class.
+ *
+ * @package    core
+ * @since      Moodle 2.6
+ * @copyright  2013 Rajesh Taneja <rajesh@moodle.com>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
 class role_capabilities_updated extends base {
     /** @var array Legacy log data */
     protected $legacylogdata = null;
@@ -34,7 +45,7 @@ class role_capabilities_updated extends base {
     protected function init() {
         $this->data['objecttable'] = 'role';
         $this->data['crud'] = 'u';
-        $this->data['level'] = self::LEVEL_OTHER;
+        $this->data['edulevel'] = self::LEVEL_OTHER;
     }
 
     /**
@@ -52,7 +63,7 @@ class role_capabilities_updated extends base {
      * @return string
      */
     public function get_description() {
-        return 'Capabilities for role ' . $this->objectid . ' are updated by user ' . $this->userid;
+        return "The user with id '$this->userid' updated the capabilities for the role with id '$this->objectid'.";
     }
 
     /**
@@ -61,10 +72,11 @@ class role_capabilities_updated extends base {
      * @return \moodle_url
      */
     public function get_url() {
-        if ($this->contextlevel === CONTEXT_SYSTEM) {
-            return new \moodle_url('admin/roles/define.php', array('action' => 'view', 'roleid' => $this->objectid));
+        if ($this->contextlevel == CONTEXT_SYSTEM) {
+            return new \moodle_url('/admin/roles/define.php', array('action' => 'view', 'roleid' => $this->objectid));
         } else {
-            return new \moodle_url('/admin/roles/override.php', array('contextid' => $this->contextid, 'roleid' => $this->objectid));
+            return new \moodle_url('/admin/roles/override.php', array('contextid' => $this->contextid,
+                'roleid' => $this->objectid));
         }
     }
 
@@ -85,5 +97,9 @@ class role_capabilities_updated extends base {
      */
     protected function get_legacy_logdata() {
         return $this->legacylogdata;
+    }
+
+    public static function get_objectid_mapping() {
+        return array('db' => 'role', 'restore' => 'role');
     }
 }

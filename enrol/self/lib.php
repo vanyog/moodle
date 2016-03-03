@@ -48,8 +48,11 @@ class enrol_self_plugin extends enrol_plugin {
         $key = false;
         $nokey = false;
         foreach ($instances as $instance) {
-            if (!$instance->customint6) {
-                // New enrols not allowed.
+            if ($this->can_self_enrol($instance, false) !== true) {
+                // User can not enrol himself.
+                // Note that we do not check here if user is already enrolled for performance reasons -
+                // such check would execute extra queries for each course in the list of courses and
+                // would hide self-enrolment icons from guests.
                 continue;
             }
             if ($instance->password or $instance->customint1) {
@@ -180,7 +183,7 @@ class enrol_self_plugin extends enrol_plugin {
      * @return bool|array true if enroled else eddor code and messege
      */
     public function enrol_self(stdClass $instance, $data = null) {
-        global $DB, $USER;
+        global $DB, $USER, $CFG;
 
         // Don't enrol user if password is not passed when required.
         if ($instance->password && !isset($data->enrolpassword)) {
@@ -195,7 +198,6 @@ class enrol_self_plugin extends enrol_plugin {
         }
 
         $this->enrol_user($instance, $USER->id, $instance->roleid, $timestart, $timeend);
-        add_to_log($instance->courseid, 'course', 'enrol', '../enrol/users.php?id='.$instance->courseid, $instance->courseid); //TODO: There should be userid somewhere!
 
         if ($instance->password and $instance->customint1 and $data->enrolpassword !== $instance->password) {
             // It must be a group enrolment, let's assign group too.
@@ -205,6 +207,8 @@ class enrol_self_plugin extends enrol_plugin {
                     continue;
                 }
                 if ($group->enrolmentkey === $data->enrolpassword) {
+                    // Add user to group.
+                    require_once($CFG->dirroot.'/group/lib.php');
                     groups_add_member($group->id, $USER->id);
                     break;
                 }
@@ -230,8 +234,8 @@ class enrol_self_plugin extends enrol_plugin {
 
         $enrolstatus = $this->can_self_enrol($instance);
 
-        // Don't show enrolment instance form, if user can't enrol using it.
         if (true === $enrolstatus) {
+            // This user can self enrol using this instance.
             $form = new enrol_self_enrol_form(NULL, $instance);
             $instanceid = optional_param('instance', 0, PARAM_INT);
             if ($instance->id == $instanceid) {
@@ -239,12 +243,23 @@ class enrol_self_plugin extends enrol_plugin {
                     $this->enrol_self($instance, $data);
                 }
             }
+        } else {
+            // This user can not self enrol using this instance. Using an empty form to keep
+            // the UI consistent with other enrolment plugins that returns a form.
+            $data = new stdClass();
+            $data->header = $this->get_instance_name($instance);
+            $data->info = $enrolstatus;
 
-            ob_start();
-            $form->display();
-            $output = ob_get_clean();
-            return $OUTPUT->box($output);
+            // The can_self_enrol call returns a button to the login page if the user is a
+            // guest, setting the login url to the form if that is the case.
+            $url = isguestuser() ? get_login_url() : null;
+            $form = new enrol_self_empty_form($url, $data);
         }
+
+        ob_start();
+        $form->display();
+        $output = ob_get_clean();
+        return $OUTPUT->box($output);
     }
 
     /**
@@ -256,12 +271,12 @@ class enrol_self_plugin extends enrol_plugin {
      * @return bool|string true if successful, else error message or false.
      */
     public function can_self_enrol(stdClass $instance, $checkuserenrolment = true) {
-        global $DB, $USER, $CFG;
+        global $CFG, $DB, $OUTPUT, $USER;
 
         if ($checkuserenrolment) {
             if (isguestuser()) {
                 // Can not enrol guest.
-                return get_string('canntenrol', 'enrol_self');
+                return get_string('noguestaccess', 'enrol') . $OUTPUT->continue_button(get_login_url());
             }
             // Check if user is already enroled.
             if ($DB->get_record('user_enrolments', array('userid' => $USER->id, 'enrolid' => $instance->id))) {
@@ -274,11 +289,11 @@ class enrol_self_plugin extends enrol_plugin {
         }
 
         if ($instance->enrolstartdate != 0 and $instance->enrolstartdate > time()) {
-            return get_string('canntenrol', 'enrol_self');
+            return get_string('canntenrolearly', 'enrol_self', userdate($instance->enrolstartdate));
         }
 
         if ($instance->enrolenddate != 0 and $instance->enrolenddate < time()) {
-            return get_string('canntenrol', 'enrol_self');
+            return get_string('canntenrollate', 'enrol_self', userdate($instance->enrolenddate));
         }
 
         if (!$instance->customint6) {
@@ -406,8 +421,9 @@ class enrol_self_plugin extends enrol_plugin {
 
         if (trim($instance->customtext1) !== '') {
             $message = $instance->customtext1;
-            $message = str_replace('{$a->coursename}', $a->coursename, $message);
-            $message = str_replace('{$a->profileurl}', $a->profileurl, $message);
+            $key = array('{$a->coursename}', '{$a->profileurl}', '{$a->fullname}', '{$a->email}');
+            $value = array($a->coursename, $a->profileurl, fullname($user), $user->email);
+            $message = str_replace($key, $value, $message);
             if (strpos($message, '<') === false) {
                 // Plain text only.
                 $messagetext = $message;
@@ -428,12 +444,18 @@ class enrol_self_plugin extends enrol_plugin {
         if (!empty($CFG->coursecontact)) {
             $croles = explode(',', $CFG->coursecontact);
             list($sort, $sortparams) = users_order_by_sql('u');
-            $rusers = get_role_users($croles, $context, true, '', 'r.sortorder ASC, ' . $sort, null, '', '', '', '', $sortparams);
+            // We only use the first user.
+            $i = 0;
+            do {
+                $rusers = get_role_users($croles[$i], $context, true, '',
+                    'r.sortorder ASC, ' . $sort, null, '', '', '', '', $sortparams);
+                $i++;
+            } while (empty($rusers) && !empty($croles[$i]));
         }
         if ($rusers) {
             $contact = reset($rusers);
         } else {
-            $contact = generate_email_supportuser();
+            $contact = core_user::get_support_user();
         }
 
         // Directly emailing welcome message rather than using messaging.
@@ -466,7 +488,7 @@ class enrol_self_plugin extends enrol_plugin {
         }
 
         // Unfortunately this may take a long time, execution can be interrupted safely here.
-        @set_time_limit(0);
+        core_php_time_limit::raise();
         raise_memory_limit(MEMORY_HUGE);
 
         $trace->output('Verifying self-enrolments...');
@@ -642,5 +664,48 @@ class enrol_self_plugin extends enrol_plugin {
         // This is necessary only because we may migrate other types to this instance,
         // we do not use component in manual or self enrol.
         role_assign($roleid, $userid, $contextid, '', 0);
+    }
+
+    /**
+     * Is it possible to delete enrol instance via standard UI?
+     *
+     * @param stdClass $instance
+     * @return bool
+     */
+    public function can_delete_instance($instance) {
+        $context = context_course::instance($instance->courseid);
+        return has_capability('enrol/self:config', $context);
+    }
+
+    /**
+     * Is it possible to hide/show enrol instance via standard UI?
+     *
+     * @param stdClass $instance
+     * @return bool
+     */
+    public function can_hide_show_instance($instance) {
+        $context = context_course::instance($instance->courseid);
+
+        if (!has_capability('enrol/self:config', $context)) {
+            return false;
+        }
+
+        // If the instance is currently disabled, before it can be enabled,
+        // we must check whether the password meets the password policies.
+        if ($instance->status == ENROL_INSTANCE_DISABLED) {
+            if ($this->get_config('requirepassword')) {
+                if (empty($instance->password)) {
+                    return false;
+                }
+            }
+            // Only check the password if it is set.
+            if (!empty($instance->password) && $this->get_config('usepasswordpolicy')) {
+                if (!check_password_policy($instance->password, $errmsg)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

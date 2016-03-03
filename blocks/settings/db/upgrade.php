@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -32,11 +31,13 @@
  * Please do not forget to use upgrade_set_timeout()
  * before any action that may take longer time to finish.
  *
- * @since 2.0
- * @package blocks
+ * @since Moodle 2.0
+ * @package block_settings
  * @copyright 2009 Sam Hemelryk
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+
+defined('MOODLE_INTERNAL') || die();
 
 /**
  * As of the implementation of this block and the general navigation code
@@ -48,27 +49,20 @@
  * was complex due to us wanting to remvoe the outmoded blocks that this
  * block was going to replace.
  *
- * @global moodle_database $DB
  * @param int $oldversion
  * @param object $block
  */
 function xmldb_block_settings_upgrade($oldversion, $block) {
-    global $DB;
+    global $CFG;
 
-    // Moodle v2.2.0 release upgrade line
-    // Put any upgrade step following this
-
-    // Moodle v2.3.0 release upgrade line
-    // Put any upgrade step following this
-
-
-    // Moodle v2.4.0 release upgrade line
-    // Put any upgrade step following this
-
-
-    // Moodle v2.5.0 release upgrade line.
+    // Moodle v2.8.0 release upgrade line.
     // Put any upgrade step following this.
 
+    // Moodle v2.9.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Moodle v3.0.0 release upgrade line.
+    // Put any upgrade step following this.
 
     return true;
 }

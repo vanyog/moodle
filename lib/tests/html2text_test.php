@@ -96,6 +96,20 @@ have been fixed <strong><a href="http://third.url/view.php">last week</a></stron
         $this->assertSame(1, preg_match('|^'.preg_quote('[2] http://another.url/?f=a&amp;b=2').'$|m', $result));
         $this->assertSame(1, preg_match('|^'.preg_quote('[3] http://third.url/view.php').'$|m', $result));
         $this->assertSame(false, strpos($result, '[4]'));
+
+        // Test multiple occurrences of the same URL.
+        $text = '<p>See <a href="http://moodle.org">moodle.org</a>,
+            <a href="http://www.google.fr">google</a>, <a href="http://www.univ-lemans.fr">univ-lemans</a>
+            and <a href="http://www.google.fr">google</a>.
+            Also try <a href="https://www.google.fr">google via HTTPS</a>.';
+        $result = html_to_text($text, 5000, true);
+        $this->assertSame(0, strpos($result, 'See moodle.org [1], google [2], univ-lemans [3] and google [2]. Also try google via HTTPS [4].'));
+        $this->assertSame(false, strpos($result, '[0]'));
+        $this->assertSame(1, preg_match('|^'.preg_quote('[1] http://moodle.org').'$|m', $result));
+        $this->assertSame(1, preg_match('|^'.preg_quote('[2] http://www.google.fr').'$|m', $result));
+        $this->assertSame(1, preg_match('|^'.preg_quote('[3] http://www.univ-lemans.fr').'$|m', $result));
+        $this->assertSame(1, preg_match('|^'.preg_quote('[4] https://www.google.fr').'$|m', $result));
+        $this->assertSame(false, strpos($result, '[5]'));
     }
 
     /**
@@ -150,19 +164,28 @@ have been fixed <strong><a href="http://third.url/view.php">last week</a></stron
             '<br />  int i = 0;<br />  while (in_string[i] != \'\0\') {<br />    in_string[i] = \'X\';<br />    i++;<br />  }<br />'.
             '}</span></pre>What would happen if a non-terminated string were input to this function?<br /><br />';
 
+        // Note, the spaces in the <pre> section are Unicode NBSPs - they may not be displayed in your editor.
         $strconv = 'Consider the following function:
 
-void FillMeUp(char* in_string) {
- int i = 0;
- while (in_string[i] != \'\0\') {
- in_string[i] = \'X\';
- i++;
- }
+void FillMeUp(char* in_string) {
+  int i = 0;
+  while (in_string[i] != \'\0\') {
+    in_string[i] = \'X\';
+    i++;
+  }
 }
 What would happen if a non-terminated string were input to this function?
 
 ';
 
         $this->assertSame($strconv, html_to_text($strorig));
+    }
+
+    /**
+     * Scripts should be stripped.
+     */
+    public function test_strip_scripts() {
+        $this->assertSame('Interesting text',
+                html_to_text('Interesting <script type="text/javascript">var what_a_mess = "Yuck!";</script> text', 0));
     }
 }

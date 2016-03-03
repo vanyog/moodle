@@ -29,6 +29,7 @@ defined('MOODLE_INTERNAL') || die();
  * User added to a cohort event class.
  *
  * @package    core
+ * @since      Moodle 2.6
  * @copyright  2013 Dan Poltawski <dan@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -41,7 +42,7 @@ class cohort_member_added extends base {
      */
     protected function init() {
         $this->data['crud'] = 'c';
-        $this->data['level'] = self::LEVEL_OTHER;
+        $this->data['edulevel'] = self::LEVEL_OTHER;
         $this->data['objecttable'] = 'cohort';
     }
 
@@ -51,7 +52,7 @@ class cohort_member_added extends base {
      * @return string
      */
     public static function get_name() {
-        return get_string('event_cohort_member_added', 'core_cohort');
+        return get_string('eventcohortmemberadded', 'core_cohort');
     }
 
     /**
@@ -60,7 +61,8 @@ class cohort_member_added extends base {
      * @return string
      */
     public function get_description() {
-        return 'User '.$this->relateduserid.' was added to cohort '.$this->objectid.' by user '.$this->userid;
+        return "The user with id '$this->userid' added the user with id '$this->relateduserid' to the cohort with " .
+            "id '$this->objectid'.";
     }
 
     /**
@@ -84,12 +86,31 @@ class cohort_member_added extends base {
     /**
      * Return legacy event data.
      *
-     * @return stdClass
+     * @return \stdClass
      */
     protected function get_legacy_eventdata() {
         $data = new \stdClass();
         $data->cohortid = $this->objectid;
         $data->userid = $this->relateduserid;
         return $data;
+    }
+
+    /**
+     * Custom validations.
+     *
+     * @throws \coding_exception
+     * @return void
+     */
+    protected function validate_data() {
+        parent::validate_data();
+
+        if (!isset($this->relateduserid)) {
+            throw new \coding_exception('The \'relateduserid\' must be set.');
+        }
+    }
+
+    public static function get_objectid_mapping() {
+        // Cohorts are not included in backups, so no mapping is needed for restore.
+        return array('db' => 'cohort', 'restore' => base::NOT_MAPPED);
     }
 }

@@ -25,10 +25,17 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+global $CFG;
+require_once($CFG->libdir . '/filestorage/file_progress.php');
 
-class core_files_zip_packer_testcase extends advanced_testcase {
+class core_files_zip_packer_testcase extends advanced_testcase implements file_progress {
     protected $testfile;
     protected $files;
+
+    /**
+     * @var array Progress information passed to the progress reporter
+     */
+    protected $progress;
 
     protected function setUp() {
         parent::setUp();
@@ -369,6 +376,73 @@ class core_files_zip_packer_testcase extends advanced_testcase {
         unlink($archive);
     }
 
+    public function test_close_archive() {
+        global $CFG;
+
+        $this->resetAfterTest(true);
+
+        $archive = "$CFG->tempdir/archive.zip";
+        $textfile = "$CFG->tempdir/textfile.txt";
+        touch($textfile);
+
+        $this->assertFileNotExists($archive);
+        $this->assertFileExists($textfile);
+
+        // Create archive and close it without files.
+        // (returns true, without any warning).
+        $zip_archive = new zip_archive();
+        $result = $zip_archive->open($archive, file_archive::CREATE);
+        $this->assertTrue($result);
+        $result = $zip_archive->close();
+        $this->assertTrue($result);
+        unlink($archive);
+
+        // Create archive and close it with files.
+        // (returns true, without any warning).
+        $zip_archive = new zip_archive();
+        $result = $zip_archive->open($archive, file_archive::CREATE);
+        $this->assertTrue($result);
+        $result = $zip_archive->add_file_from_string('test.txt', 'test');
+        $this->assertTrue($result);
+        $result = $zip_archive->add_file_from_pathname('test2.txt', $textfile);
+        $result = $zip_archive->close();
+        $this->assertTrue($result);
+        unlink($archive);
+
+        // Create archive and close if forcing error.
+        // (returns true for old PHP versions and
+        // false with warnings for new PHP versions). MDL-51863.
+        $zip_archive = new zip_archive();
+        $result = $zip_archive->open($archive, file_archive::CREATE);
+        $this->assertTrue($result);
+        $result = $zip_archive->add_file_from_string('test.txt', 'test');
+        $this->assertTrue($result);
+        $result = $zip_archive->add_file_from_pathname('test2.txt', $textfile);
+        $this->assertTrue($result);
+        // Delete the file before closing does force close() to fail.
+        unlink($textfile);
+        // Behavior is different between old PHP versions and new ones. Let's detect it.
+        $result = false;
+        try {
+            // Old PHP versions were not printing any warning.
+            $result = $zip_archive->close();
+        } catch (Exception $e) {
+            // New PHP versions print PHP Warning.
+            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertContains('ZipArchive::close', $e->getMessage());
+        }
+        // This is crazy, but it shows how some PHP versions do return true.
+        try {
+            // And some PHP versions do return correctly false (5.4.25, 5.6.14...)
+            $this->assertFalse($result);
+        } catch (Exception $e) {
+            // But others do insist into returning true (5.6.13...). Only can accept them.
+            $this->assertInstanceOf('PHPUnit_Framework_ExpectationFailedException', $e);
+            $this->assertTrue($result);
+        }
+        $this->assertFileNotExists($archive);
+    }
+
     /**
      * @depends test_add_files
      */
@@ -414,5 +488,109 @@ class core_files_zip_packer_testcase extends advanced_testcase {
         $zip_archive->close();
 
         unlink($archive);
+    }
+
+    /**
+     * Tests the progress reporting.
+     */
+    public function test_file_progress() {
+        global $CFG;
+
+        // Set up.
+        $this->resetAfterTest(true);
+        $packer = get_file_packer('application/zip');
+        $archive = "$CFG->tempdir/archive.zip";
+        $context = context_system::instance();
+
+        // Archive to pathname.
+        $this->progress = array();
+        $result = $packer->archive_to_pathname($this->files, $archive, true, $this);
+        $this->assertTrue($result);
+        // Should send progress at least once per file.
+        $this->assertTrue(count($this->progress) >= count($this->files));
+        // Each progress will be indeterminate.
+        $this->assertEquals(
+                array(file_progress::INDETERMINATE, file_progress::INDETERMINATE),
+                $this->progress[0]);
+
+        // Archive to pathname using entire folder and subfolder instead of file list.
+        unlink($archive);
+        $folder = make_temp_directory('zip_packer_progress');
+        file_put_contents($folder . '/test1.txt', 'hello');
+        $subfolder = $folder . '/sub';
+        check_dir_exists($subfolder);
+        file_put_contents($subfolder . '/test2.txt', 'world');
+        file_put_contents($subfolder . '/test3.txt', 'and');
+        file_put_contents($subfolder . '/test4.txt', 'other');
+        file_put_contents($subfolder . '/test5.txt', 'worlds');
+        $this->progress = array();
+        $result = $packer->archive_to_pathname(array('' => $folder), $archive, true, $this);
+        $this->assertTrue($result);
+        // Should send progress at least once per file.
+        $this->assertTrue(count($this->progress) >= 5);
+
+        // Archive to storage.
+        $this->progress = array();
+        $archivefile = $packer->archive_to_storage($this->files, $context->id,
+                'phpunit', 'test', 0, '/', 'archive.zip', null, true, $this);
+        $this->assertInstanceOf('stored_file', $archivefile);
+        $this->assertTrue(count($this->progress) >= count($this->files));
+        $this->assertEquals(
+                array(file_progress::INDETERMINATE, file_progress::INDETERMINATE),
+                $this->progress[0]);
+
+        // Extract to pathname.
+        $this->progress = array();
+        $target = "$CFG->tempdir/test/";
+        check_dir_exists($target);
+        $result = $packer->extract_to_pathname($archive, $target, null, $this);
+        remove_dir($target);
+        $this->assertEquals(count($this->files), count($result));
+        $this->assertTrue(count($this->progress) >= count($this->files));
+        $this->check_progress_toward_max();
+
+        // Extract to storage (from storage).
+        $this->progress = array();
+        $result = $packer->extract_to_storage($archivefile, $context->id,
+                'phpunit', 'target', 0, '/', null, $this);
+        $this->assertEquals(count($this->files), count($result));
+        $this->assertTrue(count($this->progress) >= count($this->files));
+        $this->check_progress_toward_max();
+
+        // Extract to storage (from path).
+        $this->progress = array();
+        $result = $packer->extract_to_storage($archive, $context->id,
+                'phpunit', 'target', 0, '/', null, $this);
+        $this->assertEquals(count($this->files), count($result));
+        $this->assertTrue(count($this->progress) >= count($this->files));
+        $this->check_progress_toward_max();
+
+        // Wipe created disk file.
+        unlink($archive);
+    }
+
+    /**
+     * Checks that progress reported is numeric rather than indeterminate,
+     * and follows the progress reporting rules.
+     */
+    private function check_progress_toward_max() {
+        $lastvalue = -1;
+        foreach ($this->progress as $progressitem) {
+            list($value, $max) = $progressitem;
+            $this->assertNotEquals(file_progress::INDETERMINATE, $max);
+            $this->assertTrue($value <= $max);
+            $this->assertTrue($value >= $lastvalue);
+            $lastvalue = $value;
+        }
+    }
+
+    /**
+     * Handles file_progress interface.
+     *
+     * @param int $progress
+     * @param int $max
+     */
+    public function progress($progress = file_progress::INDETERMINATE, $max = file_progress::INDETERMINATE) {
+        $this->progress[] = array($progress, $max);
     }
 }

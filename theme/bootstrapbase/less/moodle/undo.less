@@ -174,3 +174,31 @@ img.icon-pre {
     .opacity(100);
     display: inline;
 }
+
+// Allow the custom menu to expand/collapse when the user hovers over it with JS disabled.
+body:not(.jsenabled) .dropdown:hover > .dropdown-menu {
+    display: block;
+    margin-top: -6px; // We need to move it up to counter the arrows as they introduce hover bugs.
+}
+
+// Extends bootstrapbase/less/bootstrap/navbar.less
+// to enable scroll in the language menu.
+body:not(.jsenabled) .langmenu:hover > .dropdown-menu,
+.langmenu.open > .dropdown-menu {
+    display: block;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+// Extends bootstrapbase/less/bootstrap/type.less
+// to enable ol lists to use a larger number set.
+
+ol {
+    margin: 0 0 @baseLineHeight / 2 2.5em;
+}
+
+.dir-rtl {
+    ol {
+        margin: 0 2.5em @baseLineHeight / 2 0;
+    }
+}

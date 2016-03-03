@@ -32,12 +32,15 @@
  * @copyright  2012 Petr Skoda {@link http://skodak.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
+abstract class advanced_testcase extends base_testcase {
     /** @var bool automatically reset everything? null means log changes */
     private $resetAfterTest;
 
     /** @var moodle_transaction */
     private $testdbtransaction;
+
+    /** @var int timestamp used for current time asserts */
+    private $currenttimestart;
 
     /**
      * Constructs a test case with the given name.
@@ -73,17 +76,28 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
         }
 
         try {
+            $this->setCurrentTimeStart();
             parent::runBare();
             // set DB reference in case somebody mocked it in test
             $DB = phpunit_util::get_global_backup('DB');
 
             // Deal with any debugging messages.
-            phpunit_util::display_debugging_messages();
-            phpunit_util::reset_debugging();
+            $debugerror = phpunit_util::display_debugging_messages();
+            $this->resetDebugging();
+            if ($debugerror) {
+                trigger_error('Unexpected debugging() call detected.', E_USER_NOTICE);
+            }
 
-        } catch (Exception $e) {
+        } catch (Exception $ex) {
+            $e = $ex;
+        } catch (Throwable $ex) {
+            // Engine errors in PHP7 throw exceptions of type Throwable (this "catch" will be ignored in PHP5).
+            $e = $ex;
+        }
+
+        if (isset($e)) {
             // cleanup after failed expectation
-            phpunit_util::reset_all_data();
+            self::resetAllData();
             throw $e;
         }
 
@@ -97,7 +111,7 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
                 phpunit_util::reset_all_database_sequences();
                 phpunit_util::$lastdbwrites = $DB->perf_get_writes(); // no db reset necessary
             }
-            phpunit_util::reset_all_data(null);
+            self::resetAllData(null);
 
         } else if ($this->resetAfterTest === false) {
             if ($this->testdbtransaction) {
@@ -111,16 +125,16 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
                 try {
                     $this->testdbtransaction->allow_commit();
                 } catch (dml_transaction_exception $e) {
-                    phpunit_util::reset_all_data();
+                    self::resetAllData();
                     throw new coding_exception('Invalid transaction state detected in test '.$this->getName());
                 }
             }
-            phpunit_util::reset_all_data(true);
+            self::resetAllData(true);
         }
 
         // make sure test did not forget to close transaction
         if ($DB->is_transaction_started()) {
-            phpunit_util::reset_all_data();
+            self::resetAllData();
             if ($this->getStatus() == PHPUnit_Runner_BaseTestRunner::STATUS_PASSED
                 or $this->getStatus() == PHPUnit_Runner_BaseTestRunner::STATUS_SKIPPED
                 or $this->getStatus() == PHPUnit_Runner_BaseTestRunner::STATUS_INCOMPLETE) {
@@ -265,7 +279,7 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
      * @param string $message
      */
     public function assertDebuggingCalled($debugmessage = null, $debuglevel = null, $message = '') {
-        $debugging = phpunit_util::get_debugging_messages();
+        $debugging = $this->getDebuggingMessages();
         $count = count($debugging);
 
         if ($count == 0) {
@@ -290,7 +304,45 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
             $this->assertSame($debuglevel, $debug->level, $message);
         }
 
-        phpunit_util::reset_debugging();
+        $this->resetDebugging();
+    }
+
+    /**
+     * Asserts how many times debugging has been called.
+     *
+     * @param int $expectedcount The expected number of times
+     * @param array $debugmessages Expected debugging messages, one for each expected message.
+     * @param array $debuglevels Expected debugging levels, one for each expected message.
+     * @param string $message
+     * @return void
+     */
+    public function assertDebuggingCalledCount($expectedcount, $debugmessages = array(), $debuglevels = array(), $message = '') {
+        if (!is_int($expectedcount)) {
+            throw new coding_exception('assertDebuggingCalledCount $expectedcount argument should be an integer.');
+        }
+
+        $debugging = $this->getDebuggingMessages();
+        $this->assertEquals($expectedcount, count($debugging), $message);
+
+        if ($debugmessages) {
+            if (!is_array($debugmessages) || count($debugmessages) != $expectedcount) {
+                throw new coding_exception('assertDebuggingCalledCount $debugmessages should contain ' . $expectedcount . ' messages');
+            }
+            foreach ($debugmessages as $key => $debugmessage) {
+                $this->assertSame($debugmessage, $debugging[$key]->message, $message);
+            }
+        }
+
+        if ($debuglevels) {
+            if (!is_array($debuglevels) || count($debuglevels) != $expectedcount) {
+                throw new coding_exception('assertDebuggingCalledCount $debuglevels should contain ' . $expectedcount . ' messages');
+            }
+            foreach ($debuglevels as $key => $debuglevel) {
+                $this->assertSame($debuglevel, $debugging[$key]->level, $message);
+            }
+        }
+
+        $this->resetDebugging();
     }
 
     /**
@@ -298,7 +350,7 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
      * @param string $message
      */
     public function assertDebuggingNotCalled($message = '') {
-        $debugging = phpunit_util::get_debugging_messages();
+        $debugging = $this->getDebuggingMessages();
         $count = count($debugging);
 
         if ($message === '') {
@@ -339,6 +391,57 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
         $this->assertEquals($expected, $legacydata, $message);
     }
 
+    /**
+     * Assert that an event is not using event->contxet.
+     * While restoring context might not be valid and it should not be used by event url
+     * or description methods.
+     *
+     * @param \core\event\base $event the event object.
+     * @param string $message
+     * @return void
+     */
+    public function assertEventContextNotUsed(\core\event\base $event, $message = '') {
+        // Save current event->context and set it to false.
+        $eventcontext = phpunit_event_mock::testable_get_event_context($event);
+        phpunit_event_mock::testable_set_event_context($event, false);
+        if ($message === '') {
+            $message = 'Event should not use context property of event in any method.';
+        }
+
+        // Test event methods should not use event->context.
+        $event->get_url();
+        $event->get_description();
+        $event->get_legacy_eventname();
+        phpunit_event_mock::testable_get_legacy_eventdata($event);
+        phpunit_event_mock::testable_get_legacy_logdata($event);
+
+        // Restore event->context.
+        phpunit_event_mock::testable_set_event_context($event, $eventcontext);
+    }
+
+    /**
+     * Stores current time as the base for assertTimeCurrent().
+     *
+     * Note: this is called automatically before calling individual test methods.
+     * @return int current time
+     */
+    public function setCurrentTimeStart() {
+        $this->currenttimestart = time();
+        return $this->currenttimestart;
+    }
+
+    /**
+     * Assert that: start < $time < time()
+     * @param int $time
+     * @param string $message
+     * @return void
+     */
+    public function assertTimeCurrent($time, $message = '') {
+        $msg =  ($message === '') ? 'Time is lower that allowed start value' : $message;
+        $this->assertGreaterThanOrEqual($this->currenttimestart, $time, $msg);
+        $msg =  ($message === '') ? 'Time is in the future' : $message;
+        $this->assertLessThanOrEqual(time(), $time, $msg);
+    }
 
     /**
      * Starts message redirection.
@@ -388,16 +491,21 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
      * @return void
      */
     public static function tearDownAfterClass() {
-        phpunit_util::reset_all_data();
+        self::resetAllData();
     }
+
 
     /**
      * Reset all database tables, restore global state and clear caches and optionally purge dataroot dir.
-     * @static
+     *
+     * @param bool $detectchanges
+     *      true  - changes in global state and database are reported as errors
+     *      false - no errors reported
+     *      null  - only critical problems are reported as errors
      * @return void
      */
-    public static function resetAllData() {
-        phpunit_util::reset_all_data();
+    public static function resetAllData($detectchanges = false) {
+        phpunit_util::reset_all_data($detectchanges);
     }
 
     /**
@@ -422,7 +530,10 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
         unset($user->access);
         unset($user->preference);
 
-        session_set_user($user);
+        // Enusre session is empty, as it may contain caches and user specific info.
+        \core\session\manager::init_empty_session();
+
+        \core\session\manager::set_user($user);
     }
 
     /**
@@ -444,12 +555,65 @@ abstract class advanced_testcase extends PHPUnit_Framework_TestCase {
     }
 
     /**
+     * Change server and default php timezones.
+     *
+     * @param string $servertimezone timezone to set in $CFG->timezone (not validated)
+     * @param string $defaultphptimezone timezone to fake default php timezone (must be valid)
+     */
+    public static function setTimezone($servertimezone = 'Australia/Perth', $defaultphptimezone = 'Australia/Perth') {
+        global $CFG;
+        $CFG->timezone = $servertimezone;
+        core_date::phpunit_override_default_php_timezone($defaultphptimezone);
+        core_date::set_default_server_timezone();
+    }
+
+    /**
      * Get data generator
      * @static
      * @return testing_data_generator
      */
     public static function getDataGenerator() {
         return phpunit_util::get_data_generator();
+    }
+
+    /**
+     * Returns UTL of the external test file.
+     *
+     * The result depends on the value of following constants:
+     *  - TEST_EXTERNAL_FILES_HTTP_URL
+     *  - TEST_EXTERNAL_FILES_HTTPS_URL
+     *
+     * They should point to standard external test files repository,
+     * it defaults to 'http://download.moodle.org/unittest'.
+     *
+     * False value means skip tests that require external files.
+     *
+     * @param string $path
+     * @param bool $https true if https required
+     * @return string url
+     */
+    public function getExternalTestFileUrl($path, $https = false) {
+        $path = ltrim($path, '/');
+        if ($path) {
+            $path = '/'.$path;
+        }
+        if ($https) {
+            if (defined('TEST_EXTERNAL_FILES_HTTPS_URL')) {
+                if (!TEST_EXTERNAL_FILES_HTTPS_URL) {
+                    $this->markTestSkipped('Tests using external https test files are disabled');
+                }
+                return TEST_EXTERNAL_FILES_HTTPS_URL.$path;
+            }
+            return 'https://download.moodle.org/unittest'.$path;
+        }
+
+        if (defined('TEST_EXTERNAL_FILES_HTTP_URL')) {
+            if (!TEST_EXTERNAL_FILES_HTTP_URL) {
+                $this->markTestSkipped('Tests using external http test files are disabled');
+            }
+            return TEST_EXTERNAL_FILES_HTTP_URL.$path;
+        }
+        return 'http://download.moodle.org/unittest'.$path;
     }
 
     /**

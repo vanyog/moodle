@@ -18,14 +18,15 @@
 /**
  * Strings for component 'folder', language 'en', branch 'MOODLE_20_STABLE'
  *
- * @package    mod
- * @subpackage folder
- * @copyright  1999 onwards Martin Dougiamas  {@link http://moodle.com}
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   mod_folder
+ * @copyright 1999 onwards Martin Dougiamas  {@link http://moodle.com}
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 $string['contentheader'] = 'Content';
 $string['dnduploadmakefolder'] = 'Unzip files and create folder';
+$string['downloadfolder'] = 'Download folder';
+$string['eventfolderupdated'] = 'Folder updated';
 $string['folder:addinstance'] = 'Add a new folder';
 $string['folder:managefiles'] = 'Manage files in folder module';
 $string['folder:view'] = 'View folder content';
@@ -39,7 +40,6 @@ A folder may be used
 * To provide a shared uploading space for teachers on the course page (keeping the folder hidden so that only teachers can see it)';
 $string['modulename_link'] = 'mod/folder/view';
 $string['modulenameplural'] = 'Folders';
-$string['neverseen'] = 'Never seen';
 $string['page-mod-folder-x'] = 'Any folder module page';
 $string['page-mod-folder-view'] = 'Folder module main page';
 $string['pluginadministration'] = 'Folder administration';
@@ -51,5 +51,13 @@ Also note that participants view actions can not be logged in this case.';
 $string['displaypage'] = 'On a separate page';
 $string['displayinline'] = 'Inline on a course page';
 $string['noautocompletioninline'] = 'Automatic completion on viewing of activity can not be selected together with "Display inline" option';
-$string['showexpanded'] = 'Show sub-folders expanded';
-$string['showexpanded_help'] = 'If enabled, will display sub-folders expanded by default. Else, sub-folders will display collapsed.';
+$string['search:activity'] = 'Folder activities';
+$string['showdownloadfolder'] = 'Show download folder button';
+$string['showdownloadfolder_help'] = 'If set to \'yes\', a button will be shown to allow users to download a zip archive containing all files.';
+$string['showexpanded'] = 'Show subfolders expanded';
+$string['showexpanded_help'] = 'If set to \'yes\', subfolders are shown expanded by default; otherwise they are shown collapsed.';
+$string['maxsizetodownload'] = 'Maximum folder download size (MB)';
+$string['maxsizetodownload_help'] = 'If set then users will not be able to downlod zip archives of folder where the total size is larger than this value.';
+
+
+

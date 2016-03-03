@@ -9,10 +9,10 @@ YUI.add('moodle-tool_capability-search', function (Y, NAME) {
 /**
  * Constructs a new capability search manager.
  *
- * @namespace M.tool_capability.search
+ * @namespace M.tool_capability
  * @class Search
  * @constructor
- * @extends Y.Base
+ * @extends Base
  */
 var SEARCH = function() {
     SEARCH.superclass.constructor.apply(this, arguments);
@@ -83,7 +83,6 @@ SEARCH.prototype = {
         div.append(label).append(this.input);
 
         this.select.insert(div, 'before');
-        this.select.one('option').setStyle('display', 'none');
 
         this.input.on('keyup', this.typed, this);
         this.select.on('change', this.validate, this);
@@ -144,17 +143,12 @@ Y.extend(SEARCH, Y.Base, SEARCH.prototype, {
     }
 });
 
-/**
- * Core namespace.
- * @static
- * @class tool_capability
- */
 M.tool_capability = M.tool_capability || {};
 
 /**
  * Initialises capability search functionality.
  * @static
- * @method init_capability_search
+ * @method M.tool_capability.init_capability_search
  * @param {Object} options
  */
 M.tool_capability.init_capability_search = function(options) {

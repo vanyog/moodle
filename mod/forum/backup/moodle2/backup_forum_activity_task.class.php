@@ -18,10 +18,10 @@
 /**
  * Defines backup_forum_activity_task class
  *
- * @package     mod_forum
- * @category    backup
- * @copyright   2010 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
- * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   mod_forum
+ * @category  backup
+ * @copyright 2010 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
@@ -71,7 +71,7 @@ class backup_forum_activity_task extends backup_activity_task {
         $content= preg_replace($search, '$@FORUMVIEWBYF*$2@$', $content);
 
         // Link to forum discussion with parent syntax
-        $search="/(".$base."\/mod\/forum\/discuss.php\?d\=)([0-9]+)\&parent\=([0-9]+)/";
+        $search = "/(".$base."\/mod\/forum\/discuss.php\?d\=)([0-9]+)(?:\&amp;|\&)parent\=([0-9]+)/";
         $content= preg_replace($search, '$@FORUMDISCUSSIONVIEWPARENT*$2*$3@$', $content);
 
         // Link to forum discussion with relative syntax

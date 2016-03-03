@@ -23,4 +23,3 @@
  */
 
 $string['pluginname'] = 'Unordered list';
-$string['unorderedlist'] = 'Unordered list';
