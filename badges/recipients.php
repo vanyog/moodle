@@ -69,14 +69,14 @@ if ($badge->type == BADGE_TYPE_COURSE) {
 
 $PAGE->set_context($context);
 $PAGE->set_url('/badges/recipients.php', array('id' => $badgeid, 'sort' => $sortby, 'dir' => $sorthow));
-$PAGE->set_heading($badge->name);
-$PAGE->set_title($badge->name);
-$PAGE->navbar->add($badge->name);
+$PAGE->set_heading(format_string($badge->name));
+$PAGE->set_title(format_string($badge->name));
+$PAGE->navbar->add(format_string($badge->name));
 
 $output = $PAGE->get_renderer('core', 'badges');
 
 echo $output->header();
-echo $OUTPUT->heading(print_badge_image($badge, $context, 'small') . ' ' . $badge->name);
+echo $OUTPUT->heading(print_badge_image($badge, $context, 'small') . ' ' . format_string($badge->name));
 
 echo $output->print_badge_status_box($badge);
 $output->print_badge_tabs($badgeid, $context, 'awards');

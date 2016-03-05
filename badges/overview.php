@@ -57,14 +57,14 @@ $currenturl = new moodle_url('/badges/overview.php', array('id' => $badge->id));
 
 $PAGE->set_context($context);
 $PAGE->set_url($currenturl);
-$PAGE->set_heading($badge->name);
-$PAGE->set_title($badge->name);
-$PAGE->navbar->add($badge->name);
+$PAGE->set_heading(format_string($badge->name));
+$PAGE->set_title(format_string($badge->name));
+$PAGE->navbar->add(format_string($badge->name));
 
 require_capability('moodle/badges:viewbadges', $context);
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(print_badge_image($badge, $context, 'small') . ' ' . $badge->name);
+echo $OUTPUT->heading(print_badge_image($badge, $context, 'small') . ' ' . format_string($badge->name));
 
 if ($awards == 'cron') {
     echo $OUTPUT->notification(get_string('awardoncron', 'badges'), 'notifysuccess');

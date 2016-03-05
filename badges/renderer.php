@@ -138,8 +138,8 @@ class core_badges_renderer extends plugin_renderer_base {
 
         $display .= $this->heading(get_string('badgedetails', 'badges'), 3);
         $dl = array();
-        $dl[get_string('name')] = $badge->name;
-        $dl[get_string('description', 'badges')] = $badge->description;
+        $dl[get_string('name')] = format_string($badge->name);
+        $dl[get_string('description', 'badges')] = format_text($badge->description);
         $dl[get_string('createdon', 'search')] = userdate($badge->timecreated);
         $dl[get_string('badgeimage', 'badges')] = print_badge_image($badge, $context, 'large');
         $display .= $this->definition_list($dl);
@@ -147,7 +147,7 @@ class core_badges_renderer extends plugin_renderer_base {
         // Issuer details.
         $display .= $this->heading(get_string('issuerdetails', 'badges'), 3);
         $dl = array();
-        $dl[get_string('issuername', 'badges')] = $badge->issuername;
+        $dl[get_string('issuername', 'badges')] = format_string($badge->issuername);
         $dl[get_string('contact', 'badges')] = html_writer::tag('a', $badge->issuercontact, array('href' => 'mailto:' . $badge->issuercontact));
         $display .= $this->definition_list($dl);
 
@@ -594,7 +594,7 @@ class core_badges_renderer extends plugin_renderer_base {
         foreach ($badges->badges as $b) {
             $style = !$b->is_active() ? array('class' => 'dimmed') : array();
             $forlink =  print_badge_image($b, $this->page->context) . ' ' .
-                        html_writer::start_tag('span') . $b->name . html_writer::end_tag('span');
+                        html_writer::start_tag('span') . format_string($b->name) . html_writer::end_tag('span');
             $name = html_writer::link(new moodle_url('/badges/overview.php', array('id' => $b->id)), $forlink, $style);
             $status = $b->statstring;
             $criteria = self::print_badge_criteria($b, 'short');
